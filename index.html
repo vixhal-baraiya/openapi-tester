@@ -170,6 +170,54 @@
   ::-webkit-scrollbar{width:5px;height:5px}
   ::-webkit-scrollbar-track{background:transparent}
   ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
+
+  /* AI AGENT PANEL */
+  .agent-btn{background:#534ab7;color:#eeedfe;border-color:transparent}
+  .agent-btn:hover{background:#6058c8}
+  .agent-panel{position:fixed;right:0;top:0;bottom:0;width:420px;background:var(--bg);border-left:0.5px solid var(--border);display:flex;flex-direction:column;z-index:100;box-shadow:-4px 0 24px rgba(0,0,0,0.1);transform:translateX(100%);transition:transform .25s ease}
+  .agent-panel.open{transform:translateX(0)}
+  .agent-head{padding:12px 14px;border-bottom:0.5px solid var(--border);display:flex;align-items:center;gap:8px}
+  .agent-head h3{font-size:13px;font-weight:500;flex:1}
+  .agent-close{cursor:pointer;background:none;border:none;color:var(--text2);font-size:18px;padding:2px 6px;line-height:1}
+  .agent-close:hover{color:var(--text)}
+  .agent-key-row{padding:8px 12px;border-bottom:0.5px solid var(--border);display:flex;align-items:center;gap:6px;background:var(--bg2)}
+  .agent-key-row label{font-size:11px;color:var(--text2);white-space:nowrap}
+  .agent-key-row input{flex:1;font-size:11px;font-family:var(--mono)}
+  .agent-messages{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:10px}
+  .msg{display:flex;flex-direction:column;gap:3px}
+  .msg.user{align-self:flex-end;align-items:flex-end;max-width:88%}
+  .msg.agent{align-self:flex-start;align-items:flex-start;max-width:96%}
+  .msg-bubble{padding:8px 12px;border-radius:12px;font-size:12px;line-height:1.6;word-break:break-word}
+  .msg.user .msg-bubble{background:#185fa5;color:#e6f1fb;border-bottom-right-radius:3px}
+  .msg.agent .msg-bubble{background:var(--bg2);border:0.5px solid var(--border);border-bottom-left-radius:3px;width:100%}
+  .msg-time{font-size:10px;color:var(--text3);padding:0 4px}
+  .agent-input-row{padding:10px 12px;border-top:0.5px solid var(--border);display:flex;gap:6px;align-items:flex-end}
+  .agent-input-row textarea{flex:1;min-height:38px;max-height:120px;font-size:12px;resize:none}
+  .agent-send{padding:7px 14px;background:#534ab7;color:#eeedfe;border:none;border-radius:var(--radius);cursor:pointer;font-size:12px;font-weight:500;white-space:nowrap}
+  .agent-send:hover{background:#6058c8}
+  .agent-send:disabled{opacity:.4;cursor:not-allowed}
+  .plan-wrap{background:var(--bg);border:0.5px solid var(--border);border-radius:var(--radius);overflow:hidden;width:100%}
+  .plan-header{padding:8px 10px;font-size:12px;font-weight:500;background:var(--bg2);border-bottom:0.5px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+  .plan-steps{display:flex;flex-direction:column}
+  .plan-step{display:flex;align-items:center;gap:8px;padding:7px 10px;border-bottom:0.5px solid var(--border);font-size:11px}
+  .plan-step:last-child{border-bottom:none}
+  .step-num{font-size:10px;color:var(--text3);min-width:16px;text-align:right}
+  .step-mbadge{font-size:9px;font-weight:600;padding:1px 4px;border-radius:3px;min-width:36px;text-align:center;flex-shrink:0}
+  .step-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .step-icon{font-size:13px;flex-shrink:0}
+  .plan-footer{padding:8px 10px;background:var(--bg2);border-top:0.5px solid var(--border);display:flex;gap:6px;align-items:center}
+  .run-plan-btn{padding:5px 14px;background:#3b6d11;color:#eaf3de;border:none;border-radius:var(--radius);cursor:pointer;font-size:11px;font-weight:500}
+  .run-plan-btn:hover{background:#43790f}
+  .typing-indicator{display:flex;gap:4px;align-items:center;padding:8px 12px;background:var(--bg2);border-radius:12px;border:0.5px solid var(--border);width:fit-content}
+  .typing-dot{width:6px;height:6px;border-radius:50%;background:var(--text3);animation:tdot 1.2s infinite}
+  .typing-dot:nth-child(2){animation-delay:.2s}
+  .typing-dot:nth-child(3){animation-delay:.4s}
+  @keyframes tdot{0%,60%,100%{transform:translateY(0);opacity:.4}30%{transform:translateY(-4px);opacity:1}}
+  .result-chip{display:inline-block;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:500;margin-right:4px}
+  .rc-pass{background:#eaf3de;color:#3b6d11}
+  .rc-fail{background:#fcebeb;color:#a32d2d}
+  .overlay{position:fixed;inset:0;background:rgba(0,0,0,0.15);z-index:99;display:none}
+  .overlay.open{display:block}
 </style>
 </head>
 <body>
@@ -215,6 +263,7 @@
     <span style="font-size:11px;color:var(--text3)" id="epCount"></span>
     <button class="btn green sm" id="runAllBtn" onclick="runAll()"><i class="ti ti-player-play"></i> Run All</button>
     <button class="btn red sm" id="stopBtn" onclick="doStop()" disabled><i class="ti ti-player-stop"></i> Stop</button>
+    <button class="btn agent-btn sm" onclick="openAgent()"><i class="ti ti-robot"></i> AI Agent</button>
   </div>
   <div class="cfg">
     <label>Base URL</label>
@@ -821,6 +870,363 @@ function updateStats(){
   document.getElementById('progressBar').style.width=endpoints.length?Math.round(done/endpoints.length*100)+'%':'0%';
 }
 function escH(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+
+
+// ── AI AGENT ───────────────────────────────────────────────────────────────
+let agentRunning = false;
+
+function openAgent()  { document.getElementById('agentPanel').classList.add('open'); document.getElementById('overlay').classList.add('open'); }
+function closeAgent() { document.getElementById('agentPanel').classList.remove('open'); document.getElementById('overlay').classList.remove('open'); }
+
+function agentTime() {
+  return new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+}
+
+function addMessage(role, content) {
+  const wrap = document.getElementById('agentMessages');
+  // Remove typing indicator if present
+  const typing = wrap.querySelector('.typing-indicator-wrap');
+  if (typing) typing.remove();
+
+  const div = document.createElement('div');
+  div.className = 'msg ' + role;
+  div.innerHTML = '<div class="msg-bubble">' + content + '</div><div class="msg-time">' + agentTime() + '</div>';
+  wrap.appendChild(div);
+  wrap.scrollTop = wrap.scrollHeight;
+  return div;
+}
+
+function addTyping() {
+  const wrap = document.getElementById('agentMessages');
+  const div = document.createElement('div');
+  div.className = 'msg agent typing-indicator-wrap';
+  div.innerHTML = '<div class="typing-indicator"><span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span></div>';
+  wrap.appendChild(div);
+  wrap.scrollTop = wrap.scrollHeight;
+}
+
+function addPlan(plan, onRun) {
+  const wrap = document.getElementById('agentMessages');
+  const typing = wrap.querySelector('.typing-indicator-wrap');
+  if (typing) typing.remove();
+
+  const methodColor = m => ({GET:'#e1f5ee;color:#0f6e56',POST:'#e6f1fb;color:#185fa5',DELETE:'#fcebeb;color:#a32d2d',PUT:'#faeeda;color:#854f0b',PATCH:'#fbeaf0;color:#993556'}[m]||'#f1f0eb;color:#5f5e5a');
+
+  const stepsHtml = plan.steps.map((s,i) => `
+    <div class="plan-step" id="planstep_${i}">
+      <span class="step-num">${i+1}</span>
+      <span class="step-mbadge" style="background:${methodColor(s.method).split(';')[0]};${methodColor(s.method).split(';')[1]}">${s.method}</span>
+      <span class="step-name" title="${escH(s.path)}">${escH(s.name)}</span>
+      <span class="step-icon" id="stepicon_${i}">⏳</span>
+    </div>`).join('');
+
+  const div = document.createElement('div');
+  div.className = 'msg agent';
+  div.innerHTML = `
+    <div class="msg-bubble">
+      <div class="plan-wrap">
+        <div class="plan-header">
+          <span>📋 Test plan — ${plan.steps.length} endpoint${plan.steps.length>1?'s':''}</span>
+        </div>
+        <div class="plan-steps">${stepsHtml}</div>
+        <div class="plan-footer">
+          <button class="run-plan-btn" id="runPlanBtn" onclick="executePlan()">
+            <i class="ti ti-player-play"></i> Run plan
+          </button>
+          <span style="font-size:10px;color:var(--text2)">${escH(plan.reasoning)}</span>
+        </div>
+      </div>
+    </div>
+    <div class="msg-time">${agentTime()}</div>`;
+  wrap.appendChild(div);
+  wrap.scrollTop = wrap.scrollHeight;
+}
+
+// Build a compact spec summary for the AI — just enough to reason about endpoints
+function buildSpecSummary() {
+  if (!endpoints.length) return 'No endpoints loaded.';
+  const lines = endpoints.map((ep, i) =>
+    `[${i}] ${ep.method} ${ep.path} — ${ep.name}` +
+    (ep.params.filter(p=>p.req).length ? ` (required: ${ep.params.filter(p=>p.req).map(p=>p.k).join(', ')})` : '')
+  );
+  return lines.join('\n');
+}
+
+// Current test plan state
+let currentPlan = null;
+
+async function sendToAgent() {
+  const keyEl = document.getElementById('openrouterKey');
+  const inputEl = document.getElementById('agentInput');
+  const anthropicKey = keyEl.value.trim();
+  const userMsg = inputEl.value.trim();
+
+  if (!userMsg) return;
+  if (!orKey) { addMessage('agent', '⚠️ Please enter your OpenRouter API key above first. Get one free at openrouter.ai'); return; }
+  if (!endpoints.length) { addMessage('agent', '⚠️ Load an OpenAPI spec first before asking me to test it.'); return; }
+  if (agentRunning) return;
+
+  inputEl.value = '';
+  inputEl.style.height = 'auto';
+  addMessage('user', escH(userMsg));
+  addTyping();
+  agentRunning = true;
+  document.getElementById('agentSendBtn').disabled = true;
+
+  const baseUrl = document.getElementById('cfgUrl').value.trim();
+  const apiKey  = document.getElementById('cfgKey').value.trim();
+  const specSummary = buildSpecSummary();
+
+  // Build context from already-run endpoints
+  const ranResults = endpoints.filter(e => e.status === 'pass' || e.status === 'fail')
+    .map(e => `${e.method} ${e.path} → ${e.status} (${e.statusCode || 'no code'})`).join('\n') || 'None yet.';
+
+  const systemPrompt = `You are an expert API test agent. You help users test REST APIs intelligently.
+
+You have access to this API's endpoints:
+${specSummary}
+
+Base URL: ${baseUrl || '(not set)'}
+Auth: ${apiKey ? 'API key is configured' : 'No API key configured'}
+Previously run: 
+${ranResults}
+
+Your job:
+1. Understand what the user wants to test
+2. Pick the right endpoints in the right order (e.g. create before fetch, upload before verify)
+3. Return a JSON test plan
+
+IMPORTANT: Always respond with a JSON object in this exact format:
+{
+  "message": "Brief explanation of what you'll do (1-2 sentences)",
+  "plan": {
+    "reasoning": "Short note shown under the plan",
+    "steps": [
+      {
+        "index": <endpoint index from the list above>,
+        "method": "<METHOD>",
+        "path": "<path>",
+        "name": "<name>",
+        "values": {
+          "<param_key>": <value>
+        },
+        "note": "Why this step / what to expect"
+      }
+    ]
+  }
+}
+
+Rules for values:
+- For tenant_id, sub_tenant_id: use "test-tenant" and "" if not known
+- For query strings: use sensible defaults (limit: 10, page: 1)
+- For search queries: use "test" or "hello"
+- For boolean flags: use false unless the user asks otherwise
+- For range params (alpha, temperature etc): use their schema defaults
+- For IDs you don't have: use empty string "" — the test will show the real error
+- Never include file upload endpoints in auto-run plans
+- Order matters: list/read endpoints before delete, create before fetch
+
+If the user is asking a general question (not asking to run tests), set "plan" to null and just answer in "message".`;
+
+  try {
+    const orKey   = document.getElementById('openrouterKey').value.trim();
+    const orModel  = document.getElementById('orModel').value;
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + orKey,
+        'HTTP-Referer': window.location.origin,
+        'X-Title': 'OpenAPI Tester',
+      },
+      body: JSON.stringify({
+        model: orModel,
+        max_tokens: 2000,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user',   content: userMsg },
+        ],
+      }),
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      addMessage('agent', '⚠️ OpenRouter error (' + response.status + '): ' + escH(errText.slice(0, 200)));
+      agentRunning = false;
+      document.getElementById('agentSendBtn').disabled = false;
+      return;
+    }
+
+    const data = await response.json();
+    const rawText = data.choices?.[0]?.message?.content || '';
+
+    // Extract JSON from the response
+    let parsed;
+    try {
+      const match = rawText.match(/\{[\s\S]*\}/);
+      parsed = JSON.parse(match ? match[0] : rawText);
+    } catch(e) {
+      // AI returned plain text, just show it
+      addMessage('agent', escH(rawText));
+      agentRunning = false;
+      document.getElementById('agentSendBtn').disabled = false;
+      return;
+    }
+
+    // Show the message
+    if (parsed.message) {
+      addMessage('agent', escH(parsed.message));
+    }
+
+    // Show the plan if there is one
+    if (parsed.plan && parsed.plan.steps && parsed.plan.steps.length > 0) {
+      // Enrich steps with endpoint data
+      const enriched = parsed.plan.steps.map(s => {
+        const ep = endpoints[s.index] || endpoints.find(e => e.path === s.path && e.method === s.method);
+        return { ...s, ep, name: ep?.name || s.name, method: ep?.method || s.method, path: ep?.path || s.path };
+      }).filter(s => s.ep);
+
+      currentPlan = { ...parsed.plan, steps: enriched };
+      addPlan(currentPlan);
+    }
+
+  } catch(e) {
+    addMessage('agent', '⚠️ Error: ' + escH(e.message));
+  }
+
+  agentRunning = false;
+  document.getElementById('agentSendBtn').disabled = false;
+}
+
+async function executePlan() {
+  if (!currentPlan || agentRunning) return;
+  document.getElementById('runPlanBtn').disabled = true;
+  agentRunning = true;
+
+  const results = [];
+
+  for (let i = 0; i < currentPlan.steps.length; i++) {
+    const step = currentPlan.steps[i];
+    const ep   = step.ep;
+    if (!ep) continue;
+
+    // Update icon to running
+    const iconEl = document.getElementById('stepicon_' + i);
+    if (iconEl) iconEl.textContent = '⏳';
+
+    // Apply values from plan to endpoint
+    const idx = endpoints.indexOf(ep);
+    if (step.values) {
+      for (const [k, v] of Object.entries(step.values)) {
+        if (ep.values[k] !== undefined || ep.params.find(p=>p.k===k)) {
+          ep.values[k] = v;
+        }
+      }
+    }
+
+    // Run the endpoint
+    await runOne(idx);
+
+    // Update icon based on result
+    if (iconEl) iconEl.textContent = ep.status === 'pass' ? '✅' : '❌';
+
+    results.push({
+      name: ep.name,
+      method: ep.method,
+      path: ep.path,
+      status: ep.status,
+      statusCode: ep.statusCode,
+      note: step.note,
+    });
+
+    // Small delay between requests
+    await new Promise(r => setTimeout(r, 300));
+  }
+
+  // Ask AI to summarize results
+  addTyping();
+  const orKey2  = document.getElementById('openrouterKey').value.trim();
+  const orModel2 = document.getElementById('orModel').value;
+  const resultsSummary = results.map(r =>
+    `${r.method} ${r.path} (${r.name}): ${r.status} ${r.statusCode || ''}`
+  ).join('\n');
+
+  try {
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + orKey2,
+        'HTTP-Referer': window.location.origin,
+        'X-Title': 'OpenAPI Tester',
+      },
+      body: JSON.stringify({
+        model: orModel2,
+        max_tokens: 600,
+        messages: [{
+          role: 'user',
+          content: `I just ran these API tests:\n${resultsSummary}\n\nGive a brief friendly summary (3-5 sentences). Mention what passed, what failed, and any likely reasons for failures (auth errors, missing data, etc). Be specific.`
+        }],
+      }),
+    });
+
+    const data = await response.json();
+    const summary = data.choices?.[0]?.message?.content || 'Tests completed.';
+    const passCount = results.filter(r=>r.status==='pass').length;
+    const failCount = results.filter(r=>r.status==='fail').length;
+    const cls = failCount === 0 ? 'pass' : passCount === 0 ? 'fail' : 'mixed';
+    addMessage('agent',
+      `<strong>${passCount}/${results.length} passed</strong><br><br>` + escH(summary)
+    );
+  } catch(e) {
+    const passCount = results.filter(r=>r.status==='pass').length;
+    addMessage('agent', `Done — ${passCount}/${results.length} passed.`);
+  }
+
+  agentRunning = false;
+  document.getElementById('runPlanBtn').disabled = false;
+  currentPlan = null;
+}
+
 </script>
+
+<!-- OVERLAY -->
+<div class="overlay" id="overlay" onclick="closeAgent()"></div>
+
+<!-- AI AGENT PANEL -->
+<div class="agent-panel" id="agentPanel">
+  <div class="agent-head">
+    <i class="ti ti-robot" style="font-size:16px;color:#534ab7"></i>
+    <h3>AI Test Agent</h3>
+    <span style="font-size:10px;color:var(--text3);background:var(--bg2);padding:2px 7px;border-radius:10px">Claude Sonnet</span>
+    <button class="agent-close" onclick="closeAgent()">×</button>
+  </div>
+  <div class="agent-key-row">
+    <label><i class="ti ti-key" style="font-size:13px"></i> OpenRouter Key</label>
+    <input type="password" id="openrouterKey" placeholder="sk-or-..." />
+    <input type="text" id="orModel" placeholder="e.g. openai/gpt-4o" value="anthropic/claude-sonnet-4" style="width:180px;font-size:11px;font-family:var(--mono)" />
+  </div>
+  <div class="agent-messages" id="agentMessages">
+    <div class="msg agent">
+      <div class="msg-bubble">
+        👋 Hi! I'm your AI test agent. I can intelligently test your API endpoints.<br><br>
+        Tell me what to do, for example:<br>
+        • <em>"Test all endpoints"</em><br>
+        • <em>"Test the search and list endpoints"</em><br>
+        • <em>"Create a tenant then list sources"</em><br>
+        • <em>"Find all GET endpoints and run them"</em><br><br>
+        I'll figure out the right order, fill in smart values, run them, and explain what happened.
+      </div>
+    </div>
+  </div>
+  <div class="agent-input-row">
+    <textarea id="agentInput" placeholder="Tell the agent what to test..." rows="1"
+      onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendToAgent()}"
+      oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,120)+'px'"></textarea>
+    <button class="agent-send" id="agentSendBtn" onclick="sendToAgent()">
+      <i class="ti ti-send"></i> Send
+    </button>
+  </div>
+</div>
 </body>
 </html>
