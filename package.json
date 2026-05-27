@@ -1,0 +1,11 @@
+{
+  "name": "openapi-tester",
+  "version": "2.0.0",
+  "description": "Universal OpenAPI test platform",
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "node-fetch": "^3.3.2"
+  }
+}
