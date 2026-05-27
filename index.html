@@ -336,17 +336,37 @@ async function apiFetch(method, targetUrl, headers = {}, body = null, isFormData
     const { fields, files } = await serializeFormData(body);
     payload = { url: targetUrl, method, headers, isFormData: true, formFields: fields, formFiles: files };
   } else {
-    // body is already a JSON string or null
-    payload = { url: targetUrl, method, headers, body: body ? JSON.parse(body) : null };
+    // body is a JSON string — parse it back so proxy receives an object
+    let parsedBody = null;
+    if (body) {
+      try { parsedBody = JSON.parse(body); } catch(e) { parsedBody = body; }
+    }
+    payload = { url: targetUrl, method, headers, body: parsedBody };
   }
 
-  const resp = await fetch(PROXY_ENDPOINT, {
-    method:  'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body:    JSON.stringify(payload),
-  });
+  let resp;
+  try {
+    resp = await fetch(PROXY_ENDPOINT, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify(payload),
+    });
+  } catch (e) {
+    throw new Error('Could not reach proxy: ' + e.message);
+  }
 
-  const json = await resp.json();
+  // Read raw text first so we can show it if JSON parse fails
+  const rawText = await resp.text();
+  if (!rawText || rawText.trim() === '') {
+    throw new Error('Proxy returned empty response. Check Netlify function logs.');
+  }
+
+  let json;
+  try {
+    json = JSON.parse(rawText);
+  } catch (e) {
+    throw new Error('Proxy returned non-JSON: ' + rawText.slice(0, 200));
+  }
 
   // json = { status, statusText, headers, body, bodyBase64, error }
   if (json.error && !json.status) throw new Error(json.error);
