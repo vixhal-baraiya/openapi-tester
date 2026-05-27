@@ -355,29 +355,31 @@ async function apiFetch(method, targetUrl, headers = {}, body = null, isFormData
     throw new Error('Could not reach proxy: ' + e.message);
   }
 
-  // Read raw text first so we can show it if JSON parse fails
-  const rawText = await resp.text();
+  // Read raw text first — gives us something to show if JSON parse fails
+  let rawText = '';
+  try { rawText = await resp.text(); } catch(e) {}
+
   if (!rawText || rawText.trim() === '') {
-    throw new Error('Proxy returned empty response. Check Netlify function logs.');
+    throw new Error('Proxy returned empty body (HTTP ' + resp.status + '). Check Netlify function logs at app.netlify.com → your site → Functions tab.');
   }
 
   let json;
   try {
     json = JSON.parse(rawText);
   } catch (e) {
-    throw new Error('Proxy returned non-JSON: ' + rawText.slice(0, 200));
+    throw new Error('Proxy returned non-JSON (HTTP ' + resp.status + '):\n' + rawText.slice(0, 300));
   }
 
-  // json = { status, statusText, headers, body, bodyBase64, error }
-  if (json.error && !json.status) throw new Error(json.error);
+  // json.error means the proxy itself errored (not the target API)
+  if (json.error && json.status == null) throw new Error('Proxy error: ' + json.error);
 
-  // Return a Response-like object the rest of the code can use
+  // Return a Response-like object
   return {
-    ok:         json.status >= 200 && json.status < 300,
-    status:     json.status,
-    headers:    json.headers || {},
-    text:       () => Promise.resolve(json.body   || json.bodyBase64 || ''),
-    json:       () => {
+    ok:     json.status >= 200 && json.status < 300,
+    status: json.status,
+    headers: json.headers || {},
+    text:   () => Promise.resolve(json.body || ''),
+    json:   () => {
       try { return Promise.resolve(JSON.parse(json.body || 'null')); }
       catch(e) { return Promise.resolve(json.body); }
     },
