@@ -1,147 +1,105 @@
 // netlify/functions/proxy.js
-// Netlify serverless function — forwards any request to the target API.
-// Called by the browser as: POST /.netlify/functions/proxy
-// Body: { url, method, headers, body }
-
-const https = require('https');
-const http  = require('http');
+// Uses node-fetch which is available in Netlify's Node 18 runtime by default.
 
 exports.handler = async (event) => {
-  // Allow preflight
-  const corsHeaders = {
-    'Access-Control-Allow-Origin':  '*',
+  const cors = {
+    'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS,HEAD',
     'Access-Control-Allow-Headers': '*',
-    'Access-Control-Expose-Headers':'*',
   };
 
   if (event.httpMethod === 'OPTIONS') {
-    return { statusCode: 204, headers: corsHeaders, body: '' };
+    return { statusCode: 204, headers: cors, body: '' };
   }
 
-  // Parse the incoming request from the browser
+  // Parse payload sent by the browser
   let payload;
   try {
     payload = JSON.parse(event.body || '{}');
   } catch (e) {
     return {
       statusCode: 400,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ error: 'Invalid JSON payload: ' + e.message }),
+      headers: { ...cors, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ error: 'Bad JSON: ' + e.message }),
     };
   }
 
-  const { url: targetUrl, method = 'GET', headers = {}, body, isFormData, formFields, formFiles } = payload;
+  const { url, method = 'GET', headers = {}, body, isFormData, formFields, formFiles } = payload;
 
-  if (!targetUrl) {
+  if (!url) {
     return {
       statusCode: 400,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ error: 'Missing target url' }),
+      headers: { ...cors, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ error: 'Missing url' }),
     };
   }
 
-  let targetParsed;
+  // Clean headers — remove ones that break server-to-server requests
+  const fwdHeaders = { ...headers };
+  delete fwdHeaders['host'];
+  delete fwdHeaders['connection'];
+  delete fwdHeaders['transfer-encoding'];
+  delete fwdHeaders['content-length'];
+
+  // Build fetch options
+  const fetchOpts = { method: method.toUpperCase(), headers: fwdHeaders };
+
+  if (['POST', 'PUT', 'PATCH'].includes(fetchOpts.method)) {
+    if (isFormData) {
+      // Rebuild multipart/form-data from serialized fields + base64 files
+      const { FormData, Blob } = await import('node-fetch');
+      const fd = new FormData();
+      for (const [k, v] of Object.entries(formFields || {})) fd.append(k, v);
+      for (const f of (formFiles || [])) {
+        const blob = new Blob([Buffer.from(f.base64, 'base64')], { type: f.type || 'application/octet-stream' });
+        fd.append(f.field, blob, f.name);
+      }
+      fetchOpts.body = fd;
+      // Let node-fetch set Content-Type with boundary automatically
+      delete fetchOpts.headers['content-type'];
+      delete fetchOpts.headers['Content-Type'];
+    } else if (body !== null && body !== undefined) {
+      fetchOpts.body = typeof body === 'string' ? body : JSON.stringify(body);
+    }
+  }
+
   try {
-    targetParsed = new URL(targetUrl);
+    const { default: fetch } = await import('node-fetch');
+    const resp = await fetch(url, fetchOpts);
+
+    const contentType = resp.headers.get('content-type') || '';
+    const isText = contentType.includes('json') || contentType.includes('text') || contentType.includes('xml');
+
+    // Convert headers to plain object
+    const respHeaders = {};
+    resp.headers.forEach((v, k) => { respHeaders[k] = v; });
+
+    const result = {
+      status: resp.status,
+      statusText: resp.statusText,
+      headers: respHeaders,
+      body: null,
+      bodyBase64: null,
+    };
+
+    if (isText) {
+      result.body = await resp.text();
+    } else {
+      const buf = await resp.buffer();
+      result.bodyBase64 = buf.toString('base64');
+    }
+
+    return {
+      statusCode: 200,
+      headers: { ...cors, 'Content-Type': 'application/json' },
+      body: JSON.stringify(result),
+    };
+
   } catch (e) {
     return {
-      statusCode: 400,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ error: 'Invalid target URL: ' + targetUrl }),
+      statusCode: 200,
+      headers: { ...cors, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ error: 'Proxy failed: ' + e.message, status: null }),
     };
   }
-
-  // Build the request body buffer
-  let bodyBuffer = null;
-  let requestHeaders = { ...headers };
-
-  if (isFormData && formFields) {
-    // Rebuild multipart/form-data from serialized fields
-    const boundary = '----NetlifyProxyBoundary' + Date.now();
-    const parts = [];
-
-    // Regular fields
-    for (const [key, value] of Object.entries(formFields || {})) {
-      parts.push(
-        `--${boundary}\r\n` +
-        `Content-Disposition: form-data; name="${key}"\r\n\r\n` +
-        `${value}`
-      );
-    }
-
-    // File fields (base64 encoded)
-    for (const file of (formFiles || [])) {
-      parts.push(
-        `--${boundary}\r\n` +
-        `Content-Disposition: form-data; name="${file.field}"; filename="${file.name}"\r\n` +
-        `Content-Type: ${file.type || 'application/octet-stream'}\r\n\r\n`
-      );
-      // Note: binary files need special handling — append as buffer
-    }
-
-    const body = parts.join('\r\n') + `\r\n--${boundary}--`;
-    bodyBuffer = Buffer.from(body, 'utf-8');
-    requestHeaders['content-type'] = `multipart/form-data; boundary=${boundary}`;
-    requestHeaders['content-length'] = bodyBuffer.length;
-  } else if (body) {
-    bodyBuffer = Buffer.from(typeof body === 'string' ? body : JSON.stringify(body), 'utf-8');
-    requestHeaders['content-length'] = bodyBuffer.length;
-  }
-
-  // Strip hop-by-hop headers
-  delete requestHeaders['host'];
-  delete requestHeaders['connection'];
-  delete requestHeaders['transfer-encoding'];
-  delete requestHeaders['content-length']; // will be set correctly below
-  if (bodyBuffer) requestHeaders['content-length'] = bodyBuffer.length;
-
-  const isHttps = targetParsed.protocol === 'https:';
-  const lib = isHttps ? https : http;
-
-  return new Promise((resolve) => {
-    const options = {
-      hostname: targetParsed.hostname,
-      port:     targetParsed.port || (isHttps ? 443 : 80),
-      path:     targetParsed.pathname + targetParsed.search,
-      method:   method.toUpperCase(),
-      headers:  requestHeaders,
-    };
-
-    const req = lib.request(options, (res) => {
-      const chunks = [];
-      res.on('data', c => chunks.push(c));
-      res.on('end', () => {
-        const buf = Buffer.concat(chunks);
-        const contentType = res.headers['content-type'] || '';
-        const isText = contentType.includes('json') || contentType.includes('text') || contentType.includes('xml');
-
-        resolve({
-          statusCode: 200,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            status:      res.statusCode,
-            statusText:  res.statusMessage,
-            headers:     res.headers,
-            body:        isText ? buf.toString('utf-8') : null,
-            bodyBase64:  isText ? null : buf.toString('base64'),
-          }),
-        });
-      });
-    });
-
-    req.on('error', (e) => {
-      resolve({
-        statusCode: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          error:  'Proxy request failed: ' + e.message,
-          status: null,
-        }),
-      });
-    });
-
-    if (bodyBuffer) req.write(bodyBuffer);
-    req.end();
-  });
 };
