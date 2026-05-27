@@ -1,9 +1,2 @@
 [build]
   functions = "netlify/functions"
-
-# Route /proxy calls to the serverless function
-[[redirects]]
-  from   = "/proxy"
-  to     = "/.netlify/functions/proxy"
-  status = 200
-  force  = true
