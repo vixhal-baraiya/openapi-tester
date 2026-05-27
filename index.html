@@ -956,9 +956,9 @@ function buildSpecSummary() {
 let currentPlan = null;
 
 async function sendToAgent() {
-  const keyEl = document.getElementById('openrouterKey');
+  const orKey   = document.getElementById('openrouterKey').value.trim();
+  const orModel = document.getElementById('orModel').value;
   const inputEl = document.getElementById('agentInput');
-  const anthropicKey = keyEl.value.trim();
   const userMsg = inputEl.value.trim();
 
   if (!userMsg) return;
@@ -1029,8 +1029,6 @@ Rules for values:
 If the user is asking a general question (not asking to run tests), set "plan" to null and just answer in "message".`;
 
   try {
-    const orKey   = document.getElementById('openrouterKey').value.trim();
-    const orModel  = document.getElementById('orModel').value;
     const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: {
