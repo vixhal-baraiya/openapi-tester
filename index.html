@@ -264,67 +264,104 @@
 'use strict';
 
 // ── PROXY ──────────────────────────────────────────────────────────────────
-// On Netlify: netlify.toml rewrites /proxy/<url> → <url> server-side.
-// Locally: open via proxy.js at http://localhost:3131 (same rewrite).
-// Direct file open: falls back to direct fetch (CORS may block).
+// All requests go through a real proxy — either:
+//   • Netlify Function:  POST /.netlify/functions/proxy  (on Netlify)
+//   • Node proxy.js:     POST /proxy                     (local dev)
+//   • Direct fetch:      fallback when opened as file:// (CORS may block)
 
 function getProxyMode() {
   const host     = window.location.hostname;
   const protocol = window.location.protocol;
-  // Opened as a local file — no proxy available
   if (protocol === 'file:' || host === '') return 'direct';
-  // Running via node proxy.js locally
   if (host === 'localhost' || host === '127.0.0.1') return 'node';
-  // Any real HTTP host (Netlify, Vercel, Cloudflare, custom domain, etc.)
-  // All these platforms support the /proxy/* rewrite rule
   return 'netlify';
 }
 
 let proxyMode = getProxyMode();
 
+// The endpoint we POST to — both node and netlify accept the same JSON body
+const PROXY_ENDPOINT = proxyMode === 'netlify'
+  ? '/.netlify/functions/proxy'
+  : '/proxy';
+
 async function checkProxy() {
   const banner = document.getElementById('proxyBanner');
-  const msg = document.getElementById('proxyMsg');
+  const msg    = document.getElementById('proxyMsg');
   banner.style.display = 'flex';
   if (proxyMode === 'netlify') {
     banner.className = 'proxy-banner ok';
-    msg.textContent = 'Running on Netlify — all requests proxied server-side, no CORS issues.';
+    msg.textContent  = 'Running on Netlify — requests proxied via serverless function, no CORS issues.';
   } else if (proxyMode === 'node') {
     banner.className = 'proxy-banner ok';
-    msg.textContent = 'Local proxy active — all requests forwarded through proxy.js, no CORS issues.';
+    msg.textContent  = 'Local proxy active — requests forwarded through proxy.js, no CORS issues.';
   } else {
     banner.className = 'proxy-banner off';
-    msg.innerHTML = '⚠ Direct file mode — CORS errors may occur. Deploy to Netlify or run <code style="font-family:var(--mono);background:rgba(0,0,0,.1);padding:1px 5px;border-radius:3px">node proxy.js</code> locally.';
+    msg.innerHTML    = '⚠ Direct file mode — CORS errors may occur. Deploy to Netlify or run <code style="font-family:var(--mono);background:rgba(0,0,0,.1);padding:1px 5px;border-radius:3px">node proxy.js</code> then open <a href="http://localhost:3131" style="color:inherit;font-weight:500">http://localhost:3131</a>.';
   }
 }
 
-// Build the proxy URL:
-// Netlify + node proxy: GET/DELETE → /proxy/https://api.example.com/path?q=1
-//                       POST/PUT   → direct to /proxy with target url in header
+// Serialize FormData fields + files into a plain object the proxy can rebuild
+async function serializeFormData(formData) {
+  const fields = {};
+  const files  = [];
+  for (const [key, value] of formData.entries()) {
+    if (value instanceof File) {
+      // Read file as base64 so we can JSON-serialize it
+      const base64 = await new Promise((resolve, reject) => {
+        const r = new FileReader();
+        r.onload  = () => resolve(r.result.split(',')[1]);
+        r.onerror = reject;
+        r.readAsDataURL(value);
+      });
+      files.push({ field: key, name: value.name, type: value.type, base64 });
+    } else {
+      fields[key] = value;
+    }
+  }
+  return { fields, files };
+}
+
+// Central fetch — always POSTs to the proxy with a JSON description of the request
 async function apiFetch(method, targetUrl, headers = {}, body = null, isFormData = false) {
   if (proxyMode === 'direct') {
-    // fallback: direct fetch, CORS may block
+    // No proxy available — try direct (will fail on strict CORS APIs)
     const opts = { method, headers };
     if (body) opts.body = body;
     return fetch(targetUrl, opts);
   }
 
-  // Both netlify and node proxy use the same /proxy/<url> rewrite
-  const proxyTarget = '/proxy/' + targetUrl;
+  let payload;
 
-  if (isFormData) {
-    // For multipart: send FormData directly to the proxy URL
-    // Netlify rewrites the path, forwards body as-is
-    const opts = { method, headers: { ...headers }, body };
-    // Don't set Content-Type — browser sets it with boundary for FormData
-    delete opts.headers['Content-Type'];
-    delete opts.headers['content-type'];
-    return fetch(proxyTarget, opts);
+  if (isFormData && body instanceof FormData) {
+    const { fields, files } = await serializeFormData(body);
+    payload = { url: targetUrl, method, headers, isFormData: true, formFields: fields, formFiles: files };
+  } else {
+    // body is already a JSON string or null
+    payload = { url: targetUrl, method, headers, body: body ? JSON.parse(body) : null };
   }
 
-  const opts = { method, headers };
-  if (body) opts.body = body;
-  return fetch(proxyTarget, opts);
+  const resp = await fetch(PROXY_ENDPOINT, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify(payload),
+  });
+
+  const json = await resp.json();
+
+  // json = { status, statusText, headers, body, bodyBase64, error }
+  if (json.error && !json.status) throw new Error(json.error);
+
+  // Return a Response-like object the rest of the code can use
+  return {
+    ok:         json.status >= 200 && json.status < 300,
+    status:     json.status,
+    headers:    json.headers || {},
+    text:       () => Promise.resolve(json.body   || json.bodyBase64 || ''),
+    json:       () => {
+      try { return Promise.resolve(JSON.parse(json.body || 'null')); }
+      catch(e) { return Promise.resolve(json.body); }
+    },
+  };
 }
 
 // ── STATE ──────────────────────────────────────────────────────────────────
