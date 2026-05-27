@@ -1,0 +1,767 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>OpenAPI Tester</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.x/tabler-icons.min.css" />
+<style>
+  :root {
+    --bg:#ffffff;--bg2:#f8f8f6;--bg3:#f1f0eb;
+    --bg-info:#e6f1fb;--bg-success:#eaf3de;--bg-warn:#faeeda;--bg-danger:#fcebeb;
+    --text:#1a1a18;--text2:#6b6b68;--text3:#9e9e9a;
+    --text-info:#185fa5;--text-success:#3b6d11;--text-warn:#854f0b;--text-danger:#a32d2d;
+    --border:rgba(0,0,0,0.1);--border2:rgba(0,0,0,0.18);
+    --radius:8px;--radius-lg:12px;
+    --font:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+    --mono:'SF Mono','Fira Code','Roboto Mono',monospace;
+  }
+  @media(prefers-color-scheme:dark){
+    :root{
+      --bg:#1e1e1c;--bg2:#272725;--bg3:#2e2e2b;
+      --bg-info:#0c2a47;--bg-success:#142808;--bg-warn:#2e1d06;--bg-danger:#2d1010;
+      --text:#e8e8e4;--text2:#a0a09a;--text3:#6b6b66;
+      --text-info:#85b7eb;--text-success:#97c459;--text-warn:#ef9f27;--text-danger:#f09595;
+      --border:rgba(255,255,255,0.1);--border2:rgba(255,255,255,0.18);
+    }
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:var(--font);font-size:13px;color:var(--text);background:var(--bg);height:100vh;overflow:hidden}
+  input,textarea,select,button{font-family:var(--font);color:var(--text);background:var(--bg)}
+  input[type=text],input[type=password],input[type=number],textarea,select{
+    border:0.5px solid var(--border2);border-radius:var(--radius);padding:5px 8px;
+    font-size:12px;outline:none;width:100%;
+  }
+  input:focus,textarea:focus,select:focus{border-color:var(--text-info);box-shadow:0 0 0 2px rgba(24,95,165,.15)}
+  textarea{resize:vertical;min-height:55px;font-family:var(--mono);font-size:11px}
+  input[type=range]{width:100%;accent-color:var(--text-info)}
+  .app{display:flex;flex-direction:column;height:100vh}
+
+  /* PROXY BANNER */
+  .proxy-banner{padding:6px 14px;font-size:11px;display:flex;align-items:center;gap:8px;border-bottom:0.5px solid var(--border)}
+  .proxy-banner.ok{background:var(--bg-success);color:var(--text-success)}
+  .proxy-banner.off{background:var(--bg-warn);color:var(--text-warn)}
+  .proxy-dot{width:7px;height:7px;border-radius:50%;background:currentColor;flex-shrink:0}
+
+  /* UPLOAD SCREEN */
+  .upload-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:18px;padding:32px}
+  .upload-hero{text-align:center}
+  .upload-hero h1{font-size:22px;font-weight:500;margin-bottom:6px}
+  .upload-hero p{font-size:13px;color:var(--text2)}
+  .drop-zone{border:1.5px dashed var(--border2);border-radius:var(--radius-lg);padding:36px 56px;text-align:center;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:10px;max-width:480px;width:100%;transition:background .15s,border-color .15s}
+  .drop-zone:hover,.drop-zone.drag{background:var(--bg2);border-color:var(--text-info)}
+  .drop-zone i{font-size:42px;color:var(--text3)}
+  .drop-zone h2{font-size:15px;font-weight:500}
+  .drop-zone p{font-size:12px;color:var(--text2)}
+  .or-sep{font-size:11px;color:var(--text3)}
+  .paste-wrap{width:100%;max-width:480px;display:flex;flex-direction:column;gap:6px}
+  .paste-wrap textarea{min-height:80px}
+  .paste-actions{display:flex;gap:6px}
+  .err-msg{color:var(--text-danger);font-size:12px;background:var(--bg-danger);padding:8px 12px;border-radius:var(--radius);border:0.5px solid var(--text-danger);max-width:480px;width:100%;display:none}
+
+  /* BUTTONS */
+  .btn{padding:6px 13px;font-size:12px;font-weight:500;cursor:pointer;border-radius:var(--radius);border:0.5px solid var(--border2);background:var(--bg2);color:var(--text);display:inline-flex;align-items:center;gap:5px;white-space:nowrap;transition:background .12s}
+  .btn:hover{background:var(--bg3)}
+  .btn.blue{background:#185fa5;color:#e6f1fb;border-color:transparent}
+  .btn.blue:hover{background:#1a6ab8}
+  .btn.green{background:#3b6d11;color:#eaf3de;border-color:transparent}
+  .btn.red{background:#a32d2d;color:#fcebeb;border-color:transparent}
+  .btn.sm{padding:3px 9px;font-size:11px}
+  .btn:disabled{opacity:.38;cursor:not-allowed}
+
+  /* TESTER */
+  .tester{display:none;flex-direction:column;height:100vh}
+  .topbar{padding:7px 12px;border-bottom:0.5px solid var(--border);display:flex;align-items:center;gap:7px;flex-wrap:wrap;background:var(--bg)}
+  .api-title{font-size:14px;font-weight:500;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .ver-badge{font-size:10px;color:var(--text3);background:var(--bg2);padding:2px 7px;border-radius:10px}
+  .cfg{padding:7px 12px;border-bottom:0.5px solid var(--border);background:var(--bg2);display:flex;gap:7px;align-items:center;flex-wrap:wrap}
+  .cfg label{font-size:11px;color:var(--text2);white-space:nowrap}
+  #cfgUrl{flex:1;min-width:150px;max-width:280px;font-family:var(--mono)}
+  #cfgKey{width:180px;font-family:var(--mono)}
+  #cfgAuth{width:170px}
+  #cfgCustomHdr{width:120px;display:none}
+  .body{display:flex;flex:1;overflow:hidden}
+
+  /* SIDEBAR */
+  .sb{width:250px;min-width:210px;border-right:0.5px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
+  .sb-top{padding:7px 8px;border-bottom:0.5px solid var(--border);display:flex;flex-direction:column;gap:5px}
+  .sb-filters{display:flex;gap:3px;flex-wrap:wrap}
+  .sf{padding:2px 8px;font-size:10px;border-radius:8px;border:0.5px solid var(--border);cursor:pointer;background:var(--bg2);color:var(--text2)}
+  .sf.on{background:var(--bg);border-color:var(--border2);color:var(--text);font-weight:500}
+  .ep-list{flex:1;overflow-y:auto}
+  .tag-hdr{padding:4px 9px 2px;font-size:9px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;background:var(--bg2);border-bottom:0.5px solid var(--border);position:sticky;top:0;z-index:1}
+  .ep-row{display:flex;align-items:center;gap:6px;padding:6px 9px;cursor:pointer;border-bottom:0.5px solid var(--border);transition:background .1s}
+  .ep-row:hover{background:var(--bg2)}
+  .ep-row.sel{background:var(--bg-info)}
+  .mbadge{font-size:9px;font-weight:600;padding:2px 4px;border-radius:3px;min-width:38px;text-align:center;flex-shrink:0}
+  .mg{background:#e1f5ee;color:#0f6e56}.mp{background:#e6f1fb;color:#185fa5}.md{background:#fcebeb;color:#a32d2d}.mu{background:#faeeda;color:#854f0b}.mpa{background:#fbeaf0;color:#993556}
+  .ep-name{font-size:11px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .schip{font-size:9px;padding:1px 5px;border-radius:6px;flex-shrink:0}
+  .spass{background:#eaf3de;color:#3b6d11}.sfail{background:#fcebeb;color:#a32d2d}.spend{background:var(--bg2);color:var(--text3)}.srun{background:#e6f1fb;color:#185fa5}
+  .spin{display:inline-block;width:9px;height:9px;border:1.5px solid #b5d4f4;border-top-color:#185fa5;border-radius:50%;animation:sp .7s linear infinite;flex-shrink:0}
+  @keyframes sp{to{transform:rotate(360deg)}}
+
+  /* DETAIL */
+  .detail{flex:1;display:flex;flex-direction:column;overflow:hidden}
+  .det-head{padding:8px 12px;border-bottom:0.5px solid var(--border);display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+  .det-head h3{font-size:13px;font-weight:500;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .path-lbl{font-size:11px;font-family:var(--mono);color:var(--text2)}
+  .ct-badge{font-size:10px;background:var(--bg2);border:0.5px solid var(--border);padding:2px 7px;border-radius:10px;color:var(--text2)}
+  .det-body{flex:1;display:flex;overflow:hidden}
+  .params-col{width:330px;min-width:260px;overflow-y:auto;padding:10px 12px;display:flex;flex-direction:column;gap:8px;border-right:0.5px solid var(--border)}
+  .resp-col{flex:1;display:flex;flex-direction:column;overflow:hidden}
+  .rtabs{display:flex;padding:0 10px;border-bottom:0.5px solid var(--border)}
+  .rtab{padding:5px 10px;font-size:11px;cursor:pointer;border-bottom:2px solid transparent;color:var(--text2);background:none;border-top:none;border-left:none;border-right:none}
+  .rtab.on{color:var(--text);border-bottom-color:var(--text-info)}
+  .rpane{display:none;flex:1;overflow-y:auto;padding:10px}.rpane.on{display:block}
+  pre{font-family:var(--mono);font-size:11px;white-space:pre-wrap;word-break:break-all;line-height:1.5;padding:10px;background:var(--bg2);border-radius:var(--radius);border:0.5px solid var(--border);max-height:380px;overflow-y:auto}
+
+  /* FIELDS */
+  .section-sep{font-size:10px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.05em;padding:2px 0 4px;border-bottom:0.5px solid var(--border);margin-top:4px}
+  .field-block{display:flex;flex-direction:column;gap:3px}
+  .fl{font-size:11px;color:var(--text2);display:flex;align-items:baseline;gap:4px;flex-wrap:wrap;margin-bottom:2px}
+  .fl .desc{font-size:10px;color:var(--text3)}
+  .fbadge{font-size:9px;padding:1px 4px;border-radius:3px}
+  .freq{background:var(--bg-danger);color:var(--text-danger)}
+  .fopt{background:var(--bg3);color:var(--text2)}
+  .fpath{background:var(--bg-warn);color:var(--text-warn)}
+  .ffile{background:#e1f5ee;color:#0f6e56}
+  .toggle-row{display:flex;align-items:center;justify-content:space-between;padding:6px 10px;background:var(--bg2);border-radius:var(--radius);border:0.5px solid var(--border)}
+  .tl{font-size:12px;display:flex;flex-direction:column;gap:1px}
+  .tl .desc{font-size:10px;color:var(--text3)}
+  .toggle{position:relative;display:inline-block;width:34px;height:18px;flex-shrink:0}
+  .toggle input{opacity:0;width:0;height:0}
+  .tsl{position:absolute;cursor:pointer;inset:0;background:#c0beb5;border-radius:18px;transition:.2s}
+  .tsl:before{content:'';position:absolute;width:12px;height:12px;left:3px;bottom:3px;background:white;border-radius:50%;transition:.2s}
+  input:checked+.tsl{background:#185fa5}
+  input:checked+.tsl:before{transform:translateX(16px)}
+  .range-row{padding:6px 10px;background:var(--bg2);border-radius:var(--radius);border:0.5px solid var(--border)}
+  .rh{display:flex;justify-content:space-between;align-items:center;margin-bottom:2px}
+  .rname{font-size:12px}.rval{font-size:12px;font-weight:500;font-family:var(--mono);min-width:36px;text-align:right}
+  .rdesc{font-size:10px;color:var(--text3);margin-bottom:3px}
+  .info-note{font-size:11px;color:var(--text2);padding:6px 10px;background:var(--bg2);border-radius:var(--radius);border:0.5px solid var(--border);line-height:1.6}
+
+  /* FILE FIELDS */
+  .file-field{border:1.5px dashed var(--border2);border-radius:var(--radius);padding:10px 12px;display:flex;flex-direction:column;gap:6px;background:var(--bg2);cursor:pointer;transition:border-color .15s}
+  .file-field:hover{border-color:var(--text-info)}
+  .file-label-row{display:flex;align-items:center;justify-content:space-between;gap:8px}
+  .file-name{font-size:11px;font-family:var(--mono);color:var(--text2);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .file-name.loaded{color:var(--text-success);font-weight:500}
+  .file-input-hidden{display:none}
+  .file-pick-btn{padding:4px 10px;font-size:11px;cursor:pointer;border-radius:var(--radius);border:0.5px solid var(--border2);background:var(--bg);color:var(--text);display:inline-flex;align-items:center;gap:4px;white-space:nowrap;flex-shrink:0}
+  .file-pick-btn:hover{border-color:var(--text-info)}
+  .file-accept{font-size:10px;color:var(--text3)}
+  .multi-file-list{display:flex;flex-direction:column;gap:4px}
+  .multi-file-item{display:flex;align-items:center;gap:6px;font-size:11px;padding:4px 7px;background:var(--bg);border-radius:var(--radius);border:0.5px solid var(--border)}
+  .multi-file-item .fname{flex:1;font-family:var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .multi-file-item .fsize{font-size:10px;color:var(--text3);flex-shrink:0}
+  .remove-file{cursor:pointer;color:var(--text3);font-size:16px;padding:0 2px;background:none;border:none;line-height:1}
+  .remove-file:hover{color:var(--text-danger)}
+
+  /* STATUS */
+  .statusbar{padding:5px 12px;border-top:0.5px solid var(--border);display:flex;align-items:center;gap:12px;font-size:11px;color:var(--text2);background:var(--bg);flex-wrap:wrap}
+  .stat{display:flex;align-items:center;gap:4px}
+  .dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+  .dp{background:#3b6d11}.df{background:#a32d2d}.ds{background:#888780}
+  .progress-wrap{flex:1;height:3px;background:var(--bg2);border-radius:2px;overflow:hidden;min-width:80px}
+  .progress-bar{height:100%;background:#185fa5;transition:width .2s;border-radius:2px;width:0%}
+  .empty-det{display:flex;align-items:center;justify-content:center;height:100%;flex-direction:column;gap:10px;color:var(--text3);font-size:13px}
+
+  ::-webkit-scrollbar{width:5px;height:5px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
+</style>
+</head>
+<body>
+<div class="app">
+
+<!-- PROXY STATUS BANNER (shown after tester loads) -->
+<div class="proxy-banner off" id="proxyBanner" style="display:none">
+  <span class="proxy-dot"></span>
+  <span id="proxyMsg">Checking proxy...</span>
+</div>
+
+<!-- UPLOAD SCREEN -->
+<div class="upload-screen" id="uploadScreen">
+  <div class="upload-hero">
+    <h1>OpenAPI Tester</h1>
+    <p>Upload any openapi.json — auto-generates a full test UI with sliders, toggles, dropdowns &amp; file uploads</p>
+  </div>
+  <div class="drop-zone" id="dropZone"
+    onclick="document.getElementById('specFile').click()"
+    ondragover="dov(event)" ondragleave="dol()" ondrop="dop(event)">
+    <i class="ti ti-file-code"></i>
+    <h2>Drop your openapi.json here</h2>
+    <p>or click to browse</p>
+    <input type="file" id="specFile" accept=".json" onchange="onSpecFile(event)" />
+  </div>
+  <div class="or-sep">— or paste JSON directly —</div>
+  <div class="paste-wrap">
+    <textarea id="pasteBox" placeholder="Paste openapi.json content here..."></textarea>
+    <div class="paste-actions">
+      <button class="btn blue" style="flex:1" onclick="fromPaste()"><i class="ti ti-code"></i> Load from paste</button>
+      <button class="btn" onclick="loadExample()"><i class="ti ti-bolt"></i> Try example spec</button>
+    </div>
+  </div>
+  <div class="err-msg" id="specErr"></div>
+</div>
+
+<!-- TESTER -->
+<div class="tester" id="tester">
+  <div class="topbar">
+    <button class="btn sm" onclick="goBack()"><i class="ti ti-arrow-left"></i></button>
+    <span class="api-title" id="apiTitle">API</span>
+    <span class="ver-badge" id="apiVer"></span>
+    <span style="font-size:11px;color:var(--text3)" id="epCount"></span>
+    <button class="btn green sm" id="runAllBtn" onclick="runAll()"><i class="ti ti-player-play"></i> Run All</button>
+    <button class="btn red sm" id="stopBtn" onclick="doStop()" disabled><i class="ti ti-player-stop"></i> Stop</button>
+  </div>
+  <div class="cfg">
+    <label>Base URL</label>
+    <input id="cfgUrl" type="text" placeholder="https://api.example.com" />
+    <label>API Key / Token</label>
+    <input id="cfgKey" type="password" placeholder="Paste your token..." />
+    <label>Auth</label>
+    <select id="cfgAuth" onchange="toggleCustomHdr()">
+      <option value="Bearer">Authorization: Bearer</option>
+      <option value="ApiKey">X-Api-Key</option>
+      <option value="Basic">Authorization: Basic</option>
+      <option value="None">No auth</option>
+      <option value="Custom">Custom header</option>
+    </select>
+    <input id="cfgCustomHdr" type="text" placeholder="Header name" />
+  </div>
+  <div class="body">
+    <div class="sb">
+      <div class="sb-top">
+        <input id="epSearch" type="text" placeholder="Search endpoints..." oninput="renderSB()" />
+        <div class="sb-filters">
+          <button class="sf on" onclick="setSF('all',this)">All</button>
+          <button class="sf" onclick="setSF('pass',this)">✓ Pass</button>
+          <button class="sf" onclick="setSF('fail',this)">✗ Fail</button>
+          <button class="sf" onclick="setSF('pending',this)">Pending</button>
+        </div>
+      </div>
+      <div class="ep-list" id="epList"></div>
+    </div>
+    <div class="detail" id="detail">
+      <div class="empty-det">
+        <i class="ti ti-arrow-left" style="font-size:26px"></i>
+        <span>Select an endpoint to configure &amp; run</span>
+      </div>
+    </div>
+  </div>
+  <div class="statusbar">
+    <div class="stat"><span class="dot dp"></span><span id="sp">0 passed</span></div>
+    <div class="stat"><span class="dot df"></span><span id="sf2">0 failed</span></div>
+    <div class="stat"><span class="dot ds"></span><span id="sn">0 pending</span></div>
+    <div class="progress-wrap"><div class="progress-bar" id="progressBar"></div></div>
+    <span id="totalT" style="margin-left:auto"></span>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+// ── PROXY ──────────────────────────────────────────────────────────────────
+// On Netlify: netlify.toml rewrites /proxy/<url> → <url> server-side.
+// Locally: open via proxy.js at http://localhost:3131 (same rewrite).
+// Direct file open: falls back to direct fetch (CORS may block).
+
+function getProxyMode() {
+  const host     = window.location.hostname;
+  const protocol = window.location.protocol;
+  // Opened as a local file — no proxy available
+  if (protocol === 'file:' || host === '') return 'direct';
+  // Running via node proxy.js locally
+  if (host === 'localhost' || host === '127.0.0.1') return 'node';
+  // Any real HTTP host (Netlify, Vercel, Cloudflare, custom domain, etc.)
+  // All these platforms support the /proxy/* rewrite rule
+  return 'netlify';
+}
+
+let proxyMode = getProxyMode();
+
+async function checkProxy() {
+  const banner = document.getElementById('proxyBanner');
+  const msg = document.getElementById('proxyMsg');
+  banner.style.display = 'flex';
+  if (proxyMode === 'netlify') {
+    banner.className = 'proxy-banner ok';
+    msg.textContent = 'Running on Netlify — all requests proxied server-side, no CORS issues.';
+  } else if (proxyMode === 'node') {
+    banner.className = 'proxy-banner ok';
+    msg.textContent = 'Local proxy active — all requests forwarded through proxy.js, no CORS issues.';
+  } else {
+    banner.className = 'proxy-banner off';
+    msg.innerHTML = '⚠ Direct file mode — CORS errors may occur. Deploy to Netlify or run <code style="font-family:var(--mono);background:rgba(0,0,0,.1);padding:1px 5px;border-radius:3px">node proxy.js</code> locally.';
+  }
+}
+
+// Build the proxy URL:
+// Netlify + node proxy: GET/DELETE → /proxy/https://api.example.com/path?q=1
+//                       POST/PUT   → direct to /proxy with target url in header
+async function apiFetch(method, targetUrl, headers = {}, body = null, isFormData = false) {
+  if (proxyMode === 'direct') {
+    // fallback: direct fetch, CORS may block
+    const opts = { method, headers };
+    if (body) opts.body = body;
+    return fetch(targetUrl, opts);
+  }
+
+  // Both netlify and node proxy use the same /proxy/<url> rewrite
+  const proxyTarget = '/proxy/' + targetUrl;
+
+  if (isFormData) {
+    // For multipart: send FormData directly to the proxy URL
+    // Netlify rewrites the path, forwards body as-is
+    const opts = { method, headers: { ...headers }, body };
+    // Don't set Content-Type — browser sets it with boundary for FormData
+    delete opts.headers['Content-Type'];
+    delete opts.headers['content-type'];
+    return fetch(proxyTarget, opts);
+  }
+
+  const opts = { method, headers };
+  if (body) opts.body = body;
+  return fetch(proxyTarget, opts);
+}
+
+// ── STATE ──────────────────────────────────────────────────────────────────
+let spec = null, endpoints = [], selIdx = null, sbFilter = 'all';
+let running = false, stopFlag = false;
+const fileStore = {};
+
+// ── AUTH ───────────────────────────────────────────────────────────────────
+function toggleCustomHdr() {
+  document.getElementById('cfgCustomHdr').style.display =
+    document.getElementById('cfgAuth').value === 'Custom' ? '' : 'none';
+}
+function getAuthHeaders() {
+  const key = document.getElementById('cfgKey').value.trim();
+  const type = document.getElementById('cfgAuth').value;
+  if (type === 'None' || !key) return {};
+  if (type === 'Bearer') return { 'Authorization': 'Bearer ' + key };
+  if (type === 'ApiKey') return { 'X-Api-Key': key };
+  if (type === 'Basic') return { 'Authorization': 'Basic ' + btoa(key) };
+  if (type === 'Custom') {
+    const h = document.getElementById('cfgCustomHdr').value.trim();
+    return h ? { [h]: key } : {};
+  }
+  return {};
+}
+
+// ── UPLOAD ─────────────────────────────────────────────────────────────────
+function dov(e) { e.preventDefault(); document.getElementById('dropZone').classList.add('drag'); }
+function dol() { document.getElementById('dropZone').classList.remove('drag'); }
+function dop(e) { e.preventDefault(); dol(); const f = e.dataTransfer.files[0]; if (f) readSpecFile(f); }
+function onSpecFile(e) { const f = e.target.files[0]; if (f) readSpecFile(f); }
+function readSpecFile(f) {
+  const r = new FileReader();
+  r.onload = e => { try { loadSpec(JSON.parse(e.target.result)); } catch (err) { showErr('Invalid JSON: ' + err.message); } };
+  r.readAsText(f);
+}
+function fromPaste() {
+  const txt = document.getElementById('pasteBox').value.trim();
+  if (!txt) { showErr('Paste your openapi.json first.'); return; }
+  try { loadSpec(JSON.parse(txt)); } catch (e) { showErr('Invalid JSON: ' + e.message); }
+}
+function showErr(m) {
+  const el = document.getElementById('specErr');
+  el.textContent = m; el.style.display = 'block';
+  setTimeout(() => el.style.display = 'none', 6000);
+}
+function goBack() {
+  document.getElementById('uploadScreen').style.display = 'flex';
+  document.getElementById('tester').style.display = 'none';
+  spec = null; endpoints = []; selIdx = null;
+  Object.keys(fileStore).forEach(k => delete fileStore[k]);
+}
+
+// ── EXAMPLE ────────────────────────────────────────────────────────────────
+function loadExample() {
+  loadSpec({
+    openapi:'3.0.0', info:{title:'Demo API',version:'1.0.0'},
+    servers:[{url:'https://httpbin.org'}],
+    paths:{
+      '/get':{get:{summary:'GET request',tags:['httpbin'],parameters:[
+        {name:'foo',in:'query',schema:{type:'string',default:'hello'}},
+        {name:'limit',in:'query',schema:{type:'integer',minimum:1,maximum:100,default:10}},
+        {name:'verbose',in:'query',schema:{type:'boolean',default:false}},
+      ]}},
+      '/post':{post:{summary:'POST JSON',tags:['httpbin'],requestBody:{content:{'application/json':{schema:{
+        type:'object',properties:{
+          message:{type:'string',default:'hello world'},
+          count:{type:'integer',minimum:0,maximum:100,default:1},
+          mode:{type:'string',enum:['fast','slow','auto'],default:'fast'},
+          enabled:{type:'boolean',default:true},
+          score:{type:'number',minimum:0,maximum:1,default:0.5,description:'Confidence score'},
+          notes:{type:'string',description:'Additional notes'},
+        }
+      }}}}},},
+      '/status/{code}':{get:{summary:'Return status code',tags:['httpbin'],parameters:[
+        {name:'code',in:'path',required:true,schema:{type:'integer',default:200},description:'HTTP status code to return'}
+      ]}},
+      '/anything':{post:{summary:'Upload file',tags:['httpbin'],requestBody:{content:{'multipart/form-data':{schema:{
+        type:'object',required:['file'],properties:{
+          file:{type:'string',format:'binary',description:'Any file to upload'},
+          description:{type:'string'},
+          public:{type:'boolean',default:false},
+        }
+      }}}}}},
+    }
+  });
+}
+
+// ── SPEC PARSE ─────────────────────────────────────────────────────────────
+function resolveRef(ref, s) {
+  if (!ref || !ref.startsWith('#/')) return null;
+  return ref.slice(2).split('/').reduce((o, k) => o?.[decodeURIComponent(k.replace(/~1/g,'/').replace(/~0/g,'~'))], s);
+}
+function resolveSchema(sc, s, d=0) {
+  if (!sc || d > 5) return sc || {};
+  if (sc.$ref) sc = resolveRef(sc.$ref, s) || sc;
+  if (sc.allOf) return resolveSchema(sc.allOf[0], s, d+1);
+  if (sc.oneOf) return resolveSchema(sc.oneOf[0], s, d+1);
+  if (sc.anyOf) return resolveSchema(sc.anyOf[0], s, d+1);
+  return sc;
+}
+function isFileProp(p) { return p?.format==='binary' || (p?.type==='string'&&p?.format==='binary') || (p?.type==='array'&&p?.items?.format==='binary'); }
+function isMultiFile(p) { return p?.type==='array' && p?.items?.format==='binary'; }
+function inferStep(min,max) { const r=max-min; if(r<=2)return 0.05; if(r<=10)return 0.1; if(r<=100)return 1; return Math.pow(10,Math.floor(Math.log10(r))-1); }
+function inferType(sc, name='') {
+  if (!sc) return {type:'text',default:''};
+  const n = name.toLowerCase();
+  if (sc.type==='boolean') return {type:'toggle',default:sc.default??false};
+  if (sc.enum?.length) return {type:'select',options:sc.enum.map(String),default:String(sc.default??sc.enum[0])};
+  if ((sc.type==='number'||sc.type==='integer') && sc.minimum!==undefined && sc.maximum!==undefined)
+    return {type:'range',min:sc.minimum,max:sc.maximum,step:sc.type==='integer'?1:inferStep(sc.minimum,sc.maximum),default:sc.default??sc.minimum};
+  if (sc.type==='number'||sc.type==='integer') return {type:'number',default:sc.default??0};
+  if (sc.type==='array') return {type:'textarea',default:JSON.stringify(sc.default??[])};
+  if (sc.type==='object'||sc.properties) return {type:'textarea',default:JSON.stringify(sc.default??{})};
+  const long=['description','content','text','body','message','note','instruction','context','markdown','extra','prompt','bio','summary'];
+  if (long.some(x=>n.includes(x))) return {type:'textarea',default:sc.default??sc.example??''};
+  if (n.includes('secret')||n.includes('password')) return {type:'password',default:''};
+  return {type:'text',default:String(sc.default??sc.example??'')};
+}
+function buildParams(path, method, op, s) {
+  const params = [];
+  for (const p of (op.parameters||[])) {
+    const param = p.$ref ? (resolveRef(p.$ref,s)||p) : p;
+    const sc = resolveSchema(param.schema||{}, s);
+    params.push({k:param.name,loc:param.in,label:param.name,req:!!param.required,desc:param.description||sc?.description||'',...inferType(sc,param.name)});
+  }
+  const body = op.requestBody;
+  if (body) {
+    const content = body.content||{};
+    const isForm = !!content['multipart/form-data'];
+    const ct = content['multipart/form-data']||content['application/json']||Object.values(content)[0];
+    if (ct) {
+      const sc = resolveSchema(ct.schema||{}, s);
+      const props = sc?.properties||{};
+      const req = sc?.required||[];
+      if (Object.keys(props).length) {
+        for (const [key,rawProp] of Object.entries(props)) {
+          const prop = resolveSchema(rawProp, s);
+          if (isFileProp(prop)) {
+            params.push({k:key,loc:'body',label:key,req:req.includes(key),desc:prop?.description||'',type:isMultiFile(prop)?'file-multi':'file',isForm:true});
+          } else {
+            params.push({k:key,loc:'body',label:key,req:req.includes(key),desc:prop?.description||'',isForm,...inferType(prop,key)});
+          }
+        }
+      } else if (sc) {
+        params.push({k:'_body',loc:'body',label:'Request body',req:true,type:'textarea',desc:'',default:'{}'});
+      }
+    }
+  }
+  return params;
+}
+function initVals(params) {
+  const v={};
+  for (const p of params) {
+    if (p.type==='toggle') v[p.k]=p.default??false;
+    else if (p.type==='range') v[p.k]=p.default??p.min;
+    else if (p.type==='file'||p.type==='file-multi') v[p.k]=null;
+    else v[p.k]=p.default!==undefined?String(p.default):'';
+  }
+  return v;
+}
+function loadSpec(s) {
+  spec=s; endpoints=[];
+  for (const [path,pi] of Object.entries(s.paths||{})) {
+    for (const method of ['get','post','put','patch','delete','head','options']) {
+      if (!pi[method]) continue;
+      const op=pi[method];
+      endpoints.push({
+        id:path+'::'+method, method:method.toUpperCase(), path,
+        name:op.summary||op.operationId||path,
+        tag:(op.tags||['default'])[0],
+        description:op.description||'',
+        params:buildParams(path,method,op,s),
+        status:'pending',statusCode:null,response:null,reqUrl:null,reqBody:null,ms:null,
+        values:initVals(buildParams(path,method,op,s)),
+      });
+    }
+  }
+  const serverUrl=(s.servers||[])[0]?.url||'';
+  if (serverUrl) document.getElementById('cfgUrl').value=serverUrl;
+  const sec=s.components?.securitySchemes||{};
+  for (const v of Object.values(sec)) {
+    if (v.type==='apiKey'){document.getElementById('cfgAuth').value='ApiKey';break;}
+    if (v.type==='http'&&v.scheme==='bearer'){document.getElementById('cfgAuth').value='Bearer';break;}
+  }
+  document.getElementById('apiTitle').textContent=s.info?.title||'API';
+  document.getElementById('apiVer').textContent=s.info?.version||'';
+  document.getElementById('epCount').textContent=endpoints.length+' endpoints';
+  document.getElementById('uploadScreen').style.display='none';
+  document.getElementById('tester').style.display='flex';
+  sbFilter='all'; selIdx=null;
+  checkProxy();
+  renderSB(); updateStats();
+}
+
+// ── SIDEBAR ────────────────────────────────────────────────────────────────
+function setSF(f,btn){sbFilter=f;document.querySelectorAll('.sf').forEach(b=>b.classList.remove('on'));btn.classList.add('on');renderSB();}
+function renderSB() {
+  const q=(document.getElementById('epSearch').value||'').toLowerCase();
+  let lastTag='',html='';
+  for (const ep of endpoints) {
+    if(sbFilter==='pass'&&ep.status!=='pass')continue;
+    if(sbFilter==='fail'&&ep.status!=='fail')continue;
+    if(sbFilter==='pending'&&ep.status!=='pending')continue;
+    if(q&&!ep.path.toLowerCase().includes(q)&&!ep.name.toLowerCase().includes(q)&&!ep.tag.toLowerCase().includes(q))continue;
+    if(ep.tag!==lastTag){html+=`<div class="tag-hdr">${escH(ep.tag)}</div>`;lastTag=ep.tag;}
+    const mc={GET:'mg',POST:'mp',DELETE:'md',PUT:'mu',PATCH:'mpa'}[ep.method]||'mg';
+    const cs=ep.status==='pass'?'spass':ep.status==='fail'?'sfail':ep.status==='running'?'srun':'spend';
+    const cl=ep.status==='pass'?`✓${ep.statusCode||''}`:ep.status==='fail'?`✗${ep.statusCode||''}`:ep.status==='running'?'…':'·';
+    const idx=endpoints.indexOf(ep);
+    html+=`<div class="ep-row${selIdx===idx?' sel':''}" onclick="selEp(${idx})">
+      <span class="mbadge ${mc}">${ep.method}</span>
+      <span class="ep-name" title="${escH(ep.path)}">${escH(ep.name)}</span>
+      ${ep.status==='running'?'<span class="spin"></span>':''}
+      <span class="schip ${cs}">${cl}</span>
+    </div>`;
+  }
+  document.getElementById('epList').innerHTML=html||'<div style="padding:14px;font-size:11px;color:var(--text3);text-align:center">No endpoints match</div>';
+}
+
+// ── DETAIL ─────────────────────────────────────────────────────────────────
+function selEp(idx){selIdx=idx;renderSB();renderDetail();}
+function renderDetail() {
+  if(selIdx===null||!endpoints[selIdx])return;
+  const ep=endpoints[selIdx];
+  const mc={GET:'mg',POST:'mp',DELETE:'md',PUT:'mu',PATCH:'mpa'}[ep.method]||'mg';
+  const cs=ep.status==='pass'?'spass':ep.status==='fail'?'sfail':ep.status==='running'?'srun':'spend';
+  const chipTxt=ep.status==='pass'?`✓ ${ep.statusCode}`:ep.status==='fail'?`✗ ${ep.statusCode||'err'}`:ep.status==='running'?'running…':'pending';
+  const hasForm=ep.params.some(p=>p.isForm);
+  let ph='';
+  if(ep.description)ph+=`<div class="info-note">${escH(ep.description)}</div>`;
+  if(hasForm)ph+=`<div class="info-note"><i class="ti ti-forms"></i> <strong>multipart/form-data</strong> — file uploads supported.</div>`;
+  for(const sec of [{label:'Path parameters',loc:'path'},{label:'Query parameters',loc:'query'},{label:'Headers',loc:'header'},{label:'Request body',loc:'body'}]){
+    const ps=ep.params.filter(p=>p.loc===sec.loc);
+    if(!ps.length)continue;
+    ph+=`<div class="section-sep">${sec.label}</div>`;
+    ph+=ps.map(p=>fieldHtml(ep,p,selIdx)).join('');
+  }
+  if(!ep.params.length)ph+='<div style="font-size:11px;color:var(--text3)">No parameters — ready to run.</div>';
+  const respHtml=ep.response?escH(typeof ep.response==='string'?ep.response:JSON.stringify(ep.response,null,2)):'No response yet — hit Run.';
+  const reqHtml=ep.reqUrl?`URL: ${escH(ep.reqUrl)}${ep.reqBody?'\n\nBody:\n'+escH(typeof ep.reqBody==='string'?ep.reqBody:JSON.stringify(ep.reqBody,null,2)):''}`:ep.method+' '+ep.path+'\n\nNot run yet.';
+  document.getElementById('detail').innerHTML=`
+    <div class="det-head">
+      <span class="mbadge ${mc}" style="font-size:11px;padding:3px 7px">${ep.method}</span>
+      <h3>${escH(ep.name)}</h3>
+      <span class="path-lbl">${escH(ep.path)}</span>
+      ${hasForm?'<span class="ct-badge">multipart/form-data</span>':''}
+      <span class="schip ${cs}" style="font-size:11px;padding:3px 9px">${chipTxt}${ep.ms!=null?' · '+ep.ms+'ms':''}</span>
+      <button class="btn blue sm" onclick="runOne(${selIdx})" ${ep.status==='running'?'disabled':''}>
+        <i class="ti ti-player-play"></i> Run
+      </button>
+    </div>
+    <div class="det-body">
+      <div class="params-col">${ph}</div>
+      <div class="resp-col">
+        <div class="rtabs">
+          <button class="rtab on" onclick="swTab(this,'res')">Response</button>
+          <button class="rtab" onclick="swTab(this,'req')">Request</button>
+        </div>
+        <div class="rpane on" id="rp_res"><pre>${respHtml}</pre></div>
+        <div class="rpane" id="rp_req"><pre>${reqHtml}</pre></div>
+      </div>
+    </div>`;
+}
+
+function fieldHtml(ep,p,idx){
+  const val=ep.values[p.k]??'';
+  const locBadge=p.loc==='path'?'<span class="fbadge fpath">path</span>':'';
+  const reqBadge=p.req?'<span class="fbadge freq">required</span>':'<span class="fbadge fopt">optional</span>';
+  const fid=`f_${idx}_${p.k.replace(/\W/g,'_')}`;
+  const descHtml=p.desc?`<span class="desc">${escH(p.desc)}</span>`:'';
+  if(p.type==='file'){
+    const stored=fileStore[idx+'_'+p.k];
+    return `<div class="field-block">
+      <div class="fl">${escH(p.label)} ${locBadge}${reqBadge}<span class="fbadge ffile">file</span>${descHtml}</div>
+      <div class="file-field" onclick="triggerPick('${fid}')">
+        <div class="file-label-row">
+          <span class="file-name ${stored?'loaded':''}">${stored?escH(stored.name):'No file chosen'}</span>
+          <button class="file-pick-btn" onclick="event.stopPropagation();triggerPick('${fid}')"><i class="ti ti-upload"></i> Choose file</button>
+        </div>
+        ${stored?`<div style="font-size:10px;color:var(--text3)">${fmtSize(stored.size)}</div>`:'<div class="file-accept">Click to select a file</div>'}
+        <input type="file" id="${fid}" class="file-input-hidden" onchange="onFileChosen(event,${idx},'${p.k}',false)" />
+      </div></div>`;
+  }
+  if(p.type==='file-multi'){
+    const stored=fileStore[idx+'_'+p.k]||[];
+    const listHtml=stored.map((f,i)=>`<div class="multi-file-item"><i class="ti ti-file" style="font-size:13px;color:var(--text3)"></i><span class="fname">${escH(f.name)}</span><span class="fsize">${fmtSize(f.size)}</span><button class="remove-file" onclick="removeFile(${idx},'${p.k}',${i})">×</button></div>`).join('');
+    return `<div class="field-block">
+      <div class="fl">${escH(p.label)} ${locBadge}${reqBadge}<span class="fbadge ffile">files[]</span>${descHtml}</div>
+      <div class="file-field">
+        ${stored.length?`<div class="multi-file-list">${listHtml}</div>`:'<div class="file-name">No files selected</div>'}
+        <div style="display:flex;align-items:center;gap:8px;margin-top:${stored.length?'6':'0'}px">
+          <button class="file-pick-btn" onclick="triggerPick('${fid}')"><i class="ti ti-plus"></i> Add files</button>
+          ${stored.length?`<span style="font-size:10px;color:var(--text3)">${stored.length} file${stored.length>1?'s':''} · ${fmtSize(stored.reduce((a,f)=>a+f.size,0))} total</span>`:''}
+        </div>
+        <input type="file" id="${fid}" class="file-input-hidden" multiple onchange="onFileChosen(event,${idx},'${p.k}',true)" />
+      </div></div>`;
+  }
+  if(p.type==='toggle') return `<div class="toggle-row"><div class="tl"><span>${escH(p.label)} ${locBadge}${reqBadge}</span>${p.desc?`<span class="desc">${escH(p.desc)}</span>`:''}</div><label class="toggle"><input type="checkbox" ${val?'checked':''} onchange="sv(${idx},'${p.k}',this.checked)" /><span class="tsl"></span></label></div>`;
+  if(p.type==='range'){
+    const disp=p.step<1?Number(val).toFixed(2):Math.round(Number(val));
+    return `<div class="range-row"><div class="rh"><span class="rname">${escH(p.label)} ${locBadge}${reqBadge}</span><span class="rval" id="rv_${fid}">${disp}</span></div>${p.desc?`<div class="rdesc">${escH(p.desc)}</div>`:''}<input type="range" min="${p.min}" max="${p.max}" step="${p.step}" value="${val}" oninput="svr(${idx},'${p.k}',this.value,'rv_${fid}')" /></div>`;
+  }
+  if(p.type==='select'){
+    const opts=p.options.map(o=>`<option value="${escH(o)}" ${o==val?'selected':''}>${escH(o)||'(none)'}</option>`).join('');
+    return `<div class="field-block"><div class="fl">${escH(p.label)} ${locBadge}${reqBadge}${descHtml}</div><select onchange="sv(${idx},'${p.k}',this.value)">${opts}</select></div>`;
+  }
+  if(p.type==='textarea') return `<div class="field-block"><div class="fl">${escH(p.label)} ${locBadge}${reqBadge}${descHtml}</div><textarea oninput="sv(${idx},'${p.k}',this.value)">${escH(String(val))}</textarea></div>`;
+  if(p.type==='password') return `<div class="field-block"><div class="fl">${escH(p.label)} ${locBadge}${reqBadge}${descHtml}</div><input type="password" value="${escH(String(val))}" oninput="sv(${idx},'${p.k}',this.value)" /></div>`;
+  if(p.type==='number') return `<div class="field-block"><div class="fl">${escH(p.label)} ${locBadge}${reqBadge}${descHtml}</div><input type="number" value="${escH(String(val))}" oninput="sv(${idx},'${p.k}',this.value)" /></div>`;
+  return `<div class="field-block"><div class="fl">${escH(p.label)} ${locBadge}${reqBadge}${descHtml}</div><input type="text" value="${escH(String(val))}" oninput="sv(${idx},'${p.k}',this.value)" /></div>`;
+}
+
+function triggerPick(fid){document.getElementById(fid)?.click();}
+function onFileChosen(event,idx,k,multi){
+  const files=Array.from(event.target.files);if(!files.length)return;
+  const key=idx+'_'+k;
+  if(multi) fileStore[key]=[...(fileStore[key]||[]),...files];
+  else fileStore[key]=files[0];
+  endpoints[idx].values[k]='__file__';
+  renderDetail();
+}
+function removeFile(idx,k,i){
+  const key=idx+'_'+k;
+  if(fileStore[key]){fileStore[key].splice(i,1);if(!fileStore[key].length){delete fileStore[key];endpoints[idx].values[k]=null;}}
+  renderDetail();
+}
+function fmtSize(b){if(b<1024)return b+'B';if(b<1048576)return(b/1024).toFixed(1)+'KB';return(b/1048576).toFixed(1)+'MB';}
+function sv(idx,k,v){const ep=endpoints[idx];if(ep)ep.values[k]=v;}
+function svr(idx,k,v,lid){const ep=endpoints[idx];if(ep){const p=ep.params.find(x=>x.k===k);ep.values[k]=parseFloat(v);const el=document.getElementById(lid);if(el)el.textContent=p?.step<1?Number(v).toFixed(2):Math.round(v);}}
+function swTab(btn,tab){btn.closest('.resp-col').querySelectorAll('.rtab').forEach(b=>b.classList.remove('on'));btn.classList.add('on');btn.closest('.resp-col').querySelectorAll('.rpane').forEach(p=>p.classList.remove('on'));document.getElementById('rp_'+tab)?.classList.add('on');}
+
+// ── RUN ────────────────────────────────────────────────────────────────────
+async function runAll(){
+  running=true;stopFlag=false;
+  document.getElementById('runAllBtn').disabled=true;
+  document.getElementById('stopBtn').disabled=false;
+  const t0=Date.now();
+  for(let i=0;i<endpoints.length;i++){
+    if(stopFlag)break;
+    await runOne(i);
+    await new Promise(r=>setTimeout(r,150));
+  }
+  running=false;
+  document.getElementById('runAllBtn').disabled=false;
+  document.getElementById('stopBtn').disabled=true;
+  document.getElementById('totalT').textContent=`Completed in ${((Date.now()-t0)/1000).toFixed(1)}s`;
+}
+function doStop(){stopFlag=true;document.getElementById('stopBtn').disabled=true;}
+
+async function runOne(idx){
+  const ep=endpoints[idx];if(!ep)return;
+  ep.status='running';ep.response=null;ep.statusCode=null;ep.ms=null;
+  renderSB();if(selIdx===idx)renderDetail();
+
+  const base=document.getElementById('cfgUrl').value.replace(/\/$/,'');
+  let path=ep.path;
+  const v=ep.values;
+  for(const p of ep.params.filter(x=>x.loc==='path'))
+    path=path.replace('{'+p.k+'}',encodeURIComponent(v[p.k]||(':'+p.k)));
+  const qps=ep.params.filter(x=>x.loc==='query').map(p=>{
+    const val=v[p.k];
+    if(val===undefined||val===''||val===null)return null;
+    return p.k+'='+encodeURIComponent(val);
+  }).filter(Boolean);
+  const url=base+path+(qps.length?'?'+qps.join('&'):'');
+  ep.reqUrl=url;
+
+  const headers={...getAuthHeaders(),'Accept':'application/json'};
+  for(const p of ep.params.filter(x=>x.loc==='header'))if(v[p.k])headers[p.k]=v[p.k];
+
+  const bodyParams=ep.params.filter(x=>x.loc==='body');
+  const hasForm=bodyParams.some(p=>p.isForm);
+  let fetchBody=null;
+  let isFormData=false;
+
+  if(bodyParams.length&&['POST','PUT','PATCH'].includes(ep.method)){
+    if(hasForm){
+      const fd=new FormData();
+      for(const p of bodyParams){
+        const sk=idx+'_'+p.k;
+        if(p.type==='file'){const f=fileStore[sk];if(f)fd.append(p.k,f,f.name);}
+        else if(p.type==='file-multi'){for(const f of(fileStore[sk]||[]))fd.append(p.k,f,f.name);}
+        else{const val=v[p.k];if(val!==undefined&&val!==''&&val!==null)fd.append(p.k,p.type==='toggle'?String(!!val):String(val));}
+      }
+      fetchBody=fd; isFormData=true;
+      ep.reqBody='[multipart/form-data with file(s)]';
+    } else if(bodyParams.length===1&&bodyParams[0].k==='_body'){
+      try{ep.reqBody=JSON.parse(v['_body']||'{}');}catch(e){ep.reqBody=v['_body'];}
+      headers['Content-Type']='application/json';
+      fetchBody=JSON.stringify(ep.reqBody);
+    } else {
+      const body={};
+      for(const p of bodyParams){
+        const val=v[p.k];
+        if(val===''||val===undefined||val===null)continue;
+        if(p.type==='toggle')body[p.k]=!!val;
+        else if(p.type==='range'||p.type==='number')body[p.k]=parseFloat(val);
+        else if(p.type==='textarea'){try{body[p.k]=JSON.parse(val);}catch(e){body[p.k]=val;}}
+        else body[p.k]=val;
+      }
+      ep.reqBody=body;
+      headers['Content-Type']='application/json';
+      fetchBody=JSON.stringify(body);
+    }
+  }
+
+  try{
+    const t0=Date.now();
+    const resp=await apiFetch(ep.method, url, headers, fetchBody, isFormData);
+    ep.ms=Date.now()-t0;
+    ep.statusCode=resp.status;
+    let txt='';
+    try{txt=await resp.text();}catch(e){}
+    try{ep.response=JSON.parse(txt);}catch(e){ep.response=txt||'(empty response)';}
+    ep.status=resp.ok?'pass':'fail';
+  }catch(err){
+    ep.ms=null;ep.statusCode=null;
+    ep.response=(proxyMode!=='direct')
+      ?'Error: '+String(err)
+      :'CORS error: '+String(err)+'\n\nDeploy to Netlify or run proxy.js locally to fix this.';
+    ep.status='fail';
+  }
+  renderSB();if(selIdx===idx)renderDetail();updateStats();
+}
+
+function updateStats(){
+  const pass=endpoints.filter(e=>e.status==='pass').length;
+  const fail=endpoints.filter(e=>e.status==='fail').length;
+  const pend=endpoints.filter(e=>e.status==='pending').length;
+  const done=endpoints.length-pend;
+  document.getElementById('sp').textContent=pass+' passed';
+  document.getElementById('sf2').textContent=fail+' failed';
+  document.getElementById('sn').textContent=pend+' pending';
+  document.getElementById('progressBar').style.width=endpoints.length?Math.round(done/endpoints.length*100)+'%':'0%';
+}
+function escH(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+</script>
+</body>
+</html>

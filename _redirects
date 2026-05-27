@@ -1,0 +1,3 @@
+# Cloudflare Pages & Netlify _redirects format
+# Forwards /proxy/<url> → <url> server-side, bypassing CORS
+/proxy/*  :splat  200
