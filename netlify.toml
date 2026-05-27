@@ -1,17 +1,9 @@
-# ── Netlify configuration ──────────────────────────────────────────────────
-#
-# This proxy redirect is the key piece that fixes CORS.
-# All requests to /proxy/<url> are forwarded server-side to <url>.
-# Since Netlify forwards them server-to-server, your API never sees a
-# browser Origin header, so CORS is completely bypassed.
-#
-# Example:
-#   Browser calls: /proxy/https://api.hydradb.com/tenants/tenant_ids
-#   Netlify calls: https://api.hydradb.com/tenants/tenant_ids  ← no CORS
-#
+[build]
+  functions = "netlify/functions"
+
+# Route /proxy calls to the serverless function
 [[redirects]]
-  from   = "/proxy/*"
-  to     = ":splat"
+  from   = "/proxy"
+  to     = "/.netlify/functions/proxy"
   status = 200
   force  = true
-  headers = { X-Forwarded-By = "openapi-tester" }
