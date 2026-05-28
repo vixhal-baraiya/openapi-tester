@@ -7,6 +7,75 @@ const CORS = {
   "Access-Control-Allow-Headers": "*",
 };
 
+function stripUnsafeHeaders(headers = {}) {
+  const cleaned = {};
+  const blocked = new Set([
+    "host",
+    "connection",
+    "transfer-encoding",
+    "content-length",
+  ]);
+
+  for (const [k, v] of Object.entries(headers || {})) {
+    const lower = String(k).toLowerCase();
+    if (blocked.has(lower)) continue;
+    // The proxy must set the multipart boundary itself.
+    if (lower === "content-type" && /multipart\/form-data/i.test(String(v))) continue;
+    cleaned[k] = v;
+  }
+  return cleaned;
+}
+
+function escapeHeaderValue(value) {
+  return String(value ?? "").replace(/["\r\n]/g, "_");
+}
+
+function pushFormField(parts, boundary, name, value) {
+  parts.push(Buffer.from(
+    `--${boundary}\r\n` +
+    `Content-Disposition: form-data; name="${escapeHeaderValue(name)}"\r\n\r\n` +
+    `${value ?? ""}\r\n`
+  ));
+}
+
+function pushFormFile(parts, boundary, file) {
+  const filename = file.name || "upload.bin";
+  const type = file.type || "application/octet-stream";
+
+  parts.push(Buffer.from(
+    `--${boundary}\r\n` +
+    `Content-Disposition: form-data; name="${escapeHeaderValue(file.field)}"; filename="${escapeHeaderValue(filename)}"\r\n` +
+    `Content-Type: ${escapeHeaderValue(type)}\r\n\r\n`
+  ));
+  parts.push(Buffer.from(file.base64 || "", "base64"));
+  parts.push(Buffer.from("\r\n"));
+}
+
+function buildMultipartBody(formFields = {}, formFiles = []) {
+  const boundary = "OpenApiTesterBoundary" + Date.now().toString(16) + Math.random().toString(16).slice(2);
+  const parts = [];
+
+  if (Array.isArray(formFields)) {
+    for (const field of formFields) pushFormField(parts, boundary, field.name ?? field.field, field.value);
+  } else {
+    for (const [name, value] of Object.entries(formFields || {})) {
+      if (Array.isArray(value)) {
+        for (const item of value) pushFormField(parts, boundary, name, item);
+      } else {
+        pushFormField(parts, boundary, name, value);
+      }
+    }
+  }
+
+  for (const file of formFiles || []) pushFormFile(parts, boundary, file);
+  parts.push(Buffer.from(`--${boundary}--\r\n`));
+
+  return {
+    body: Buffer.concat(parts),
+    contentType: `multipart/form-data; boundary=${boundary}`,
+  };
+}
+
 exports.handler = async (event) => {
   // Preflight
   if (event.httpMethod === "OPTIONS") {
@@ -52,45 +121,21 @@ exports.handler = async (event) => {
     };
   }
 
-  // Clean up headers
-  const fwdHeaders = {};
-  for (const [k, v] of Object.entries(headers)) {
-    const lower = k.toLowerCase();
-    if (["host", "connection", "transfer-encoding", "content-length"].includes(lower)) continue;
-    fwdHeaders[k] = v;
-  }
+  const init = {
+    method: String(method || "GET").toUpperCase(),
+    headers: stripUnsafeHeaders(headers),
+  };
 
-  // Build fetch init
-  const init = { method: method.toUpperCase(), headers: fwdHeaders };
-
-  if (["POST", "PUT", "PATCH"].includes(init.method)) {
+  if (!["GET", "HEAD"].includes(init.method)) {
     if (isFormData) {
-      // Rebuild multipart manually using Buffer — Node 18 FormData doesn't work well in Lambda
-      const boundary = "Boundary" + Date.now();
-      const parts = [];
-
-      for (const [k, v] of Object.entries(formFields || {})) {
-        parts.push(
-          Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${k}"\r\n\r\n${v}\r\n`)
-        );
-      }
-      for (const f of formFiles || []) {
-        parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${f.field}"; filename="${f.name}"\r\nContent-Type: ${f.type || "application/octet-stream"}\r\n\r\n`));
-        parts.push(Buffer.from(f.base64, "base64"));
-        parts.push(Buffer.from("\r\n"));
-      }
-      parts.push(Buffer.from(`--${boundary}--\r\n`));
-
-      const bodyBuf = Buffer.concat(parts);
-      init.body = bodyBuf;
-      init.headers["content-type"] = `multipart/form-data; boundary=${boundary}`;
-      delete init.headers["Content-Type"];
+      const multipart = buildMultipartBody(formFields, formFiles);
+      init.body = multipart.body;
+      init.headers["Content-Type"] = multipart.contentType;
     } else if (body != null) {
       init.body = typeof body === "string" ? body : JSON.stringify(body);
     }
   }
 
-  // Make the request using global fetch (Node 18)
   let response;
   try {
     response = await fetch(url, init);
@@ -102,7 +147,6 @@ exports.handler = async (event) => {
     };
   }
 
-  // Read response
   let responseBody = "";
   try {
     responseBody = await response.text();
@@ -110,7 +154,6 @@ exports.handler = async (event) => {
     responseBody = "";
   }
 
-  // Collect response headers
   const respHeaders = {};
   response.headers.forEach((v, k) => {
     respHeaders[k] = v;
