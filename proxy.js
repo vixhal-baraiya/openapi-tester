@@ -37,6 +37,12 @@ function readRequestBody(req) {
   });
 }
 
+function injectUploadFix(html) {
+  if (html.includes("/upload-fix.js")) return html;
+  const tag = '<script src="/upload-fix.js"></script>\n';
+  return html.includes("</body>") ? html.replace("</body>", tag + "</body>") : html + tag;
+}
+
 function stripUnsafeHeaders(headers = {}) {
   const cleaned = {};
   const blocked = new Set([
@@ -187,10 +193,20 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === "GET" && reqUrl.pathname === "/upload-fix.js") {
+    const fixPath = path.join(__dirname, "upload-fix.js");
+    try {
+      send(res, 200, fs.readFileSync(fixPath, "utf8"), { "Content-Type": "application/javascript; charset=utf-8" });
+    } catch (e) {
+      sendJson(res, 500, { error: "Could not read upload-fix.js: " + e.message });
+    }
+    return;
+  }
+
   if (req.method === "GET" && (reqUrl.pathname === "/" || reqUrl.pathname === "/index.html")) {
     const indexPath = path.join(__dirname, "index.html");
     try {
-      send(res, 200, fs.readFileSync(indexPath, "utf8"), { "Content-Type": "text/html; charset=utf-8" });
+      send(res, 200, injectUploadFix(fs.readFileSync(indexPath, "utf8")), { "Content-Type": "text/html; charset=utf-8" });
     } catch (e) {
       sendJson(res, 500, { error: "Could not read index.html: " + e.message });
     }
