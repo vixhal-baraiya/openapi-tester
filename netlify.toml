@@ -3,3 +3,8 @@
 
 [build.environment]
   NODE_VERSION = "18"
+
+# Inject Swagger/OpenAPI 2 formData file upload support into the static app.
+[[edge_functions]]
+  path = "/*"
+  function = "inject-upload-fix"
