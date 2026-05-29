@@ -36,12 +36,39 @@
     return schema;
   }
 
+  function fieldNameTokens(name) {
+    return String(name || '')
+      .toLowerCase()
+      .split(/[^a-z0-9]+/)
+      .filter(Boolean);
+  }
+
+  function isMetadataField(name) {
+    const tokens = fieldNameTokens(name);
+    return tokens.includes('metadata')
+      || tokens.includes('meta')
+      || tokens.includes('filemetadata')
+      || tokens.includes('filemeta')
+      || tokens.includes('documentmetadata')
+      || tokens.includes('documentmeta');
+  }
+
   function looksLikeUploadField(name, schema) {
-    const n = String(name || '').toLowerCase();
+    if (isMetadataField(name)) return false;
+
+    const tokens = fieldNameTokens(name);
     const d = String(schema && schema.description || '').toLowerCase();
-    return /(^|[_-])(file|files|document|documents|attachment|attachments)($|[_-])/.test(n)
-      || /\b(file|files|document|documents|attachment|attachments)\b/.test(n)
-      || /\b(upload|uploads|uploaded|attach|attachment|document)\b/.test(d);
+
+    // Name fallback is intentionally strict to avoid false positives like
+    // `file_metadata`. It should catch fields actually named files/documents/etc.
+    const uploadName = tokens.length > 0 && tokens.every(t =>
+      ['file', 'files', 'document', 'documents', 'attachment', 'attachments', 'upload', 'uploads'].includes(t)
+    );
+
+    const uploadDescription = /\b(files?|documents?|attachments?)\s+to\s+upload\b/.test(d)
+      || /\bupload(ed)?\s+(files?|documents?|attachments?)\b/.test(d);
+
+    return uploadName || uploadDescription;
   }
 
   function isFileLikeSchema(schema, spec, fieldName, inForm) {
@@ -49,19 +76,17 @@
     if (!sc) return false;
 
     if (sc.type === 'file') return true;
-    if (sc.format === 'binary' || sc.format === 'base64') return true;
-    if (sc.contentEncoding === 'base64') return true;
-    if (sc.contentMediaType && String(sc.contentMediaType).startsWith('application/')) return true;
-    if (sc.type === 'string' && (sc.format === 'binary' || sc.format === 'base64')) return true;
+    if (sc.format === 'binary') return true;
+    if (sc.type === 'string' && sc.format === 'binary') return true;
 
     if (sc.type === 'array') {
       if (isFileLikeSchema(sc.items || {}, spec, fieldName, inForm)) return true;
       // Some generators omit `items.format: binary` even for multipart file arrays.
-      // Only use this name/description fallback for multipart/formData fields.
+      // Only use this strict name/description fallback for multipart/formData fields.
       if (inForm && looksLikeUploadField(fieldName, sc)) return true;
     }
 
-    // Same fallback for a single multipart/formData string field named file/files.
+    // Same strict fallback for a single multipart/formData string field named file/files.
     if (inForm && sc.type === 'string' && looksLikeUploadField(fieldName, sc)) return true;
     return false;
   }
