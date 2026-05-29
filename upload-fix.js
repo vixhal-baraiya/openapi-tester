@@ -1,7 +1,9 @@
 // upload-fix.js
 // Runtime patch for file-upload fields that are declared as Swagger/OpenAPI 2
-// `in: formData, type: file`. The main app already supports OpenAPI 3
-// multipart request bodies; this adds the missing Swagger 2 field mapping.
+// `in: formData, type: file`, and for multipart OpenAPI 3 fields that are
+// arrays of file-like schemas. The main app already supports basic OpenAPI 3
+// multipart request bodies; this widens file-field detection so upload controls
+// are shown instead of a raw [] textarea.
 (function () {
   function resolveMaybeRef(obj, spec) {
     if (!obj) return {};
@@ -9,27 +11,64 @@
     return obj;
   }
 
+  function resolveSchemaDeep(schema, spec, depth) {
+    if (!schema || depth > 8) return schema || {};
+    let resolved = resolveMaybeRef(schema, spec) || schema;
+
+    if (typeof window.resolveSchema === 'function') {
+      resolved = window.resolveSchema(resolved, spec) || resolved;
+    }
+
+    if (resolved.items) {
+      resolved = { ...resolved, items: resolveSchemaDeep(resolved.items, spec, depth + 1) };
+    }
+
+    return resolved;
+  }
+
   function normalizeParamSchema(param, spec) {
-    const base = resolveMaybeRef(param.schema, spec) || {};
+    const base = resolveSchemaDeep(param.schema, spec, 0) || {};
     const schema = { ...base };
-    for (const key of ['type', 'format', 'items', 'enum', 'default', 'minimum', 'maximum', 'example', 'description']) {
+    for (const key of ['type', 'format', 'items', 'enum', 'default', 'minimum', 'maximum', 'example', 'description', 'contentEncoding', 'contentMediaType']) {
       if (schema[key] === undefined && param[key] !== undefined) schema[key] = param[key];
     }
-    if (schema.items) schema.items = resolveMaybeRef(schema.items, spec) || schema.items;
+    if (schema.items) schema.items = resolveSchemaDeep(schema.items, spec, 0) || schema.items;
     return schema;
   }
 
-  function isFileLikeSchema(schema) {
-    if (!schema) return false;
-    if (schema.type === 'file') return true;
-    if (schema.format === 'binary') return true;
-    if (schema.type === 'string' && schema.format === 'binary') return true;
-    if (schema.type === 'array') return isFileLikeSchema(schema.items || {});
+  function looksLikeUploadField(name, schema) {
+    const n = String(name || '').toLowerCase();
+    const d = String(schema && schema.description || '').toLowerCase();
+    return /(^|[_-])(file|files|document|documents|attachment|attachments)($|[_-])/.test(n)
+      || /\b(file|files|document|documents|attachment|attachments)\b/.test(n)
+      || /\b(upload|uploads|uploaded|attach|attachment|document)\b/.test(d);
+  }
+
+  function isFileLikeSchema(schema, spec, fieldName, inForm) {
+    const sc = resolveSchemaDeep(schema, spec, 0);
+    if (!sc) return false;
+
+    if (sc.type === 'file') return true;
+    if (sc.format === 'binary' || sc.format === 'base64') return true;
+    if (sc.contentEncoding === 'base64') return true;
+    if (sc.contentMediaType && String(sc.contentMediaType).startsWith('application/')) return true;
+    if (sc.type === 'string' && (sc.format === 'binary' || sc.format === 'base64')) return true;
+
+    if (sc.type === 'array') {
+      if (isFileLikeSchema(sc.items || {}, spec, fieldName, inForm)) return true;
+      // Some generators omit `items.format: binary` even for multipart file arrays.
+      // Only use this name/description fallback for multipart/formData fields.
+      if (inForm && looksLikeUploadField(fieldName, sc)) return true;
+    }
+
+    // Same fallback for a single multipart/formData string field named file/files.
+    if (inForm && sc.type === 'string' && looksLikeUploadField(fieldName, sc)) return true;
     return false;
   }
 
-  function isMultiFileSchema(schema) {
-    return schema && schema.type === 'array' && isFileLikeSchema(schema.items || {});
+  function isMultiFileSchema(schema, spec, fieldName, inForm) {
+    const sc = resolveSchemaDeep(schema, spec, 0);
+    return sc && sc.type === 'array' && isFileLikeSchema(sc.items || sc, spec, fieldName, inForm);
   }
 
   function pushOpenApi3BodyParams(params, body, spec) {
@@ -38,23 +77,21 @@
     const ct = content['multipart/form-data'] || content['application/json'] || Object.values(content)[0];
     if (!ct) return;
 
-    const schema = typeof window.resolveSchema === 'function'
-      ? window.resolveSchema(ct.schema || {}, spec)
-      : (ct.schema || {});
+    const schema = resolveSchemaDeep(ct.schema || {}, spec, 0);
     const props = schema && schema.properties ? schema.properties : {};
     const required = schema && schema.required ? schema.required : [];
 
     if (Object.keys(props).length) {
       for (const [key, rawProp] of Object.entries(props)) {
-        const prop = typeof window.resolveSchema === 'function' ? window.resolveSchema(rawProp, spec) : rawProp;
-        if (isFileLikeSchema(prop)) {
+        const prop = resolveSchemaDeep(rawProp, spec, 0);
+        if (isFileLikeSchema(prop, spec, key, isForm)) {
           params.push({
             k: key,
             loc: 'body',
             label: key,
             req: required.includes(key),
             desc: prop && prop.description ? prop.description : '',
-            type: isMultiFileSchema(prop) ? 'file-multi' : 'file',
+            type: isMultiFileSchema(prop, spec, key, isForm) ? 'file-multi' : 'file',
             isForm: true,
           });
         } else {
@@ -87,14 +124,14 @@
       // Swagger/OpenAPI 2 file uploads are declared as parameters:
       // { in: 'formData', type: 'file', name: '...' }
       if (param.in === 'formData') {
-        if (isFileLikeSchema(schema)) {
+        if (isFileLikeSchema(schema, spec, param.name, true)) {
           params.push({
             k: param.name,
             loc: 'body',
             label: param.name,
             req: required,
             desc,
-            type: isMultiFileSchema(schema) ? 'file-multi' : 'file',
+            type: isMultiFileSchema(schema, spec, param.name, true) ? 'file-multi' : 'file',
             isForm: true,
           });
         } else {
